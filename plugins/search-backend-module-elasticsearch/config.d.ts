@@ -115,6 +115,19 @@ export interface Config {
              * Eg. https://my-es-cluster.eu-west-1.es.amazonaws.com
              */
             node: string;
+
+            /**
+             * The AWS region.
+             * Only needed if using a custom DNS record.
+             */
+            region?: string;
+
+            /**
+             * The AWS service used for request signature.
+             * Either 'es' for "Managed Clusters" or 'aoss' for "Serverless".
+             * Only needed if using a custom DNS record.
+             */
+            service?: 'es' | 'aoss';
           }
 
         /**
@@ -192,10 +205,40 @@ export interface Config {
                   password: string;
                 }
               | {
+                  /**
+                   * @visibility secret
+                   */
                   apiKey: string;
                 };
           }
       );
+
+      /**
+       * Authentication credentials for ElasticSearch. These are fallback
+       * credentials - in most cases, for known specific ES implementations, the
+       * respective auth block inside the clientOptions above will be used.
+       *
+       * If both ApiKey/Bearer token and username+password is provided, tokens
+       * take precedence
+       */
+      auth?:
+        | {
+            username: string;
+
+            /**
+             * @visibility secret
+             */
+            password: string;
+          }
+        | {
+            /**
+             * Base64 Encoded API key to be used to connect to the cluster.
+             * See: https://www.elastic.co/guide/en/elasticsearch/reference/current/security-api-create-api-key.html
+             *
+             * @visibility secret
+             */
+            apiKey: string;
+          };
     };
   };
 }

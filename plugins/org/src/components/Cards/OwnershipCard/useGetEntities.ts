@@ -16,9 +16,9 @@
 
 import {
   Entity,
+  parseEntityRef,
   RELATION_MEMBER_OF,
   RELATION_PARENT_OF,
-  parseEntityRef,
   stringifyEntityRef,
 } from '@backstage/catalog-model';
 import {
@@ -29,11 +29,12 @@ import {
 } from '@backstage/plugin-catalog-react';
 import limiterFactory from 'p-limit';
 import { useApi } from '@backstage/core-plugin-api';
-import useAsync from 'react-use/lib/useAsync';
+import useAsync from 'react-use/esm/useAsync';
 import qs from 'qs';
-import { EntityRelationAggregation as EntityRelationsAggregation } from './types';
+import { EntityRelationAggregation } from '../types';
+import { uniq } from 'lodash';
 
-const limiter = limiterFactory(10);
+const limiter = limiterFactory(5);
 
 type EntityTypeProps = {
   kind: string;
@@ -80,6 +81,7 @@ const isEntity = (entity: Entity | undefined): entity is Entity =>
 const getChildOwnershipEntityRefs = async (
   entity: Entity,
   catalogApi: CatalogApi,
+  alreadyRetrievedParentRefs: string[] = [],
 ): Promise<string[]> => {
   const childGroups = getEntityRelations(entity, RELATION_PARENT_OF, {
     kind: 'Group',
@@ -87,54 +89,58 @@ const getChildOwnershipEntityRefs = async (
 
   const hasChildGroups = childGroups.length > 0;
 
+  const entityRef = stringifyEntityRef(entity);
   if (hasChildGroups) {
     const entityRefs = childGroups.map(r => stringifyEntityRef(r));
-    const childGroupResponse = await catalogApi.getEntitiesByRefs({
-      fields: ['kind', 'metadata.namespace', 'metadata.name'],
-      entityRefs,
-    });
+    const childGroupResponse = await limiter(() =>
+      catalogApi.getEntitiesByRefs({
+        fields: ['kind', 'metadata.namespace', 'metadata.name', 'relations'],
+        entityRefs,
+      }),
+    );
     const childGroupEntities = childGroupResponse.items.filter(isEntity);
 
-    return (
+    const unknownChildren = childGroupEntities.filter(
+      childGroupEntity =>
+        !alreadyRetrievedParentRefs.includes(
+          stringifyEntityRef(childGroupEntity),
+        ),
+    );
+    const childrenRefs = (
       await Promise.all(
-        childGroupEntities.map(childGroupEntity =>
-          limiter(() =>
-            getChildOwnershipEntityRefs(childGroupEntity, catalogApi),
-          ),
+        unknownChildren.map(childGroupEntity =>
+          getChildOwnershipEntityRefs(childGroupEntity, catalogApi, [
+            ...alreadyRetrievedParentRefs,
+            entityRef,
+          ]),
         ),
       )
     ).flatMap(aggregated => aggregated);
+
+    return uniq([...childrenRefs, entityRef]);
   }
 
-  return [stringifyEntityRef(entity)];
+  return [entityRef];
 };
 
 const getOwners = async (
   entity: Entity,
-  relations: EntityRelationsAggregation,
+  relations: EntityRelationAggregation,
   catalogApi: CatalogApi,
 ): Promise<string[]> => {
   const isGroup = entity.kind === 'Group';
   const isAggregated = relations === 'aggregated';
   const isUserEntity = entity.kind === 'User';
 
-  const owners: string[] = [];
-
   if (isAggregated && isGroup) {
-    const childEntityRefs = await getChildOwnershipEntityRefs(
-      entity,
-      catalogApi,
-    );
-    owners.push(stringifyEntityRef(entity));
-    owners.push.apply(owners, childEntityRefs);
-  } else if (isAggregated && isUserEntity) {
-    const parentEntityRefs = getMemberOfEntityRefs(entity);
-    owners.push.apply(owners, parentEntityRefs);
-  } else {
-    owners.push(stringifyEntityRef(entity));
+    return getChildOwnershipEntityRefs(entity, catalogApi);
   }
 
-  return owners;
+  if (isAggregated && isUserEntity) {
+    return getMemberOfEntityRefs(entity);
+  }
+
+  return [stringifyEntityRef(entity)];
 };
 
 const getOwnedEntitiesByOwners = (
@@ -160,7 +166,7 @@ const getOwnedEntitiesByOwners = (
 
 export function useGetEntities(
   entity: Entity,
-  relations: EntityRelationsAggregation,
+  relations: EntityRelationAggregation,
   entityFilterKind?: string[],
   entityLimit = 6,
 ): {

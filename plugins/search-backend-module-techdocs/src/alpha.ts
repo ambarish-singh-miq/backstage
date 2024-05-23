@@ -19,28 +19,64 @@
  * A module for the search backend that exports TechDocs modules.
  */
 
-import { loggerToWinstonLogger } from '@backstage/backend-common';
 import {
   coreServices,
   createBackendModule,
+  createExtensionPoint,
 } from '@backstage/backend-plugin-api';
 import { readTaskScheduleDefinitionFromConfig } from '@backstage/backend-tasks';
 import { catalogServiceRef } from '@backstage/plugin-catalog-node/alpha';
-import { DefaultTechDocsCollatorFactory } from '@backstage/plugin-search-backend-module-techdocs';
+import {
+  DefaultTechDocsCollatorFactory,
+  TechDocsCollatorEntityTransformer,
+} from '@backstage/plugin-search-backend-module-techdocs';
 import { searchIndexRegistryExtensionPoint } from '@backstage/plugin-search-backend-node/alpha';
+
+/** @alpha */
+export interface TechDocsCollatorEntityTransformerExtensionPoint {
+  setTransformer(transformer: TechDocsCollatorEntityTransformer): void;
+}
+
+/**
+ * Extension point used to customize the TechDocs collator entity transformer.
+ *
+ * @alpha
+ */
+export const techdocsCollatorEntityTransformerExtensionPoint =
+  createExtensionPoint<TechDocsCollatorEntityTransformerExtensionPoint>({
+    id: 'search.techdocsCollator.transformer',
+  });
 
 /**
  * @alpha
  * Search backend module for the TechDocs index.
  */
 export default createBackendModule({
-  moduleId: 'techDocsCollator',
   pluginId: 'search',
+  moduleId: 'techdocs-collator',
   register(env) {
+    let transformer: TechDocsCollatorEntityTransformer | undefined;
+
+    env.registerExtensionPoint(
+      techdocsCollatorEntityTransformerExtensionPoint,
+      {
+        setTransformer(newTransformer) {
+          if (transformer) {
+            throw new Error(
+              'TechDocs collator entity transformer may only be set once',
+            );
+          }
+          transformer = newTransformer;
+        },
+      },
+    );
+
     env.registerInit({
       deps: {
         config: coreServices.rootConfig,
         logger: coreServices.logger,
+        auth: coreServices.auth,
+        httpAuth: coreServices.httpAuth,
         discovery: coreServices.discovery,
         tokenManager: coreServices.tokenManager,
         scheduler: coreServices.scheduler,
@@ -50,6 +86,8 @@ export default createBackendModule({
       async init({
         config,
         logger,
+        auth,
+        httpAuth,
         discovery,
         tokenManager,
         scheduler,
@@ -73,8 +111,11 @@ export default createBackendModule({
           factory: DefaultTechDocsCollatorFactory.fromConfig(config, {
             discovery,
             tokenManager,
-            logger: loggerToWinstonLogger(logger),
+            auth,
+            httpAuth,
+            logger,
             catalogClient: catalog,
+            entityTransformer: transformer,
           }),
         });
       },

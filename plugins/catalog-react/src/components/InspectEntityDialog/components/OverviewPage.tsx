@@ -15,15 +15,14 @@
  */
 
 import { AlphaEntity } from '@backstage/catalog-model/alpha';
-import {
-  Box,
-  DialogContentText,
-  List,
-  ListItem,
-  ListItemIcon,
-  makeStyles,
-  Typography,
-} from '@material-ui/core';
+import Box from '@material-ui/core/Box';
+import DialogContentText from '@material-ui/core/DialogContentText';
+import List from '@material-ui/core/List';
+import ListItem from '@material-ui/core/ListItem';
+import ListItemIcon from '@material-ui/core/ListItemIcon';
+import ListItemSecondaryAction from '@material-ui/core/ListItemSecondaryAction';
+import Typography from '@material-ui/core/Typography';
+import { makeStyles } from '@material-ui/core/styles';
 import groupBy from 'lodash/groupBy';
 import sortBy from 'lodash/sortBy';
 import React from 'react';
@@ -35,7 +34,8 @@ import {
   ListItemText,
   ListSubheader,
 } from './common';
-import { EntityKindIcon } from './EntityKindIcon';
+import { stringifyEntityRef } from '@backstage/catalog-model';
+import { CopyTextButton } from '@backstage/core-components';
 
 const useStyles = makeStyles({
   root: {
@@ -60,6 +60,7 @@ export function OverviewPage(props: { entity: AlphaEntity }) {
     'type',
   );
 
+  const entityRef = stringifyEntityRef(props.entity);
   return (
     <>
       <DialogContentText variant="h2">Overview</DialogContentText>
@@ -74,19 +75,34 @@ export function OverviewPage(props: { entity: AlphaEntity }) {
             </ListItem>
             {spec?.type && (
               <ListItem>
-                <ListItemText primary="spec.type" secondary={spec.type} />
+                <ListItemText
+                  primary="spec.type"
+                  secondary={spec.type?.toString()}
+                />
               </ListItem>
             )}
             {metadata.uid && (
               <ListItem>
                 <ListItemText primary="uid" secondary={metadata.uid} />
+                <ListItemSecondaryAction>
+                  <CopyTextButton text={metadata.uid} />
+                </ListItemSecondaryAction>
               </ListItem>
             )}
             {metadata.etag && (
               <ListItem>
                 <ListItemText primary="etag" secondary={metadata.etag} />
+                <ListItemSecondaryAction>
+                  <CopyTextButton text={metadata.etag} />
+                </ListItemSecondaryAction>
               </ListItem>
             )}
+            <ListItem>
+              <ListItemText primary="entityRef" secondary={entityRef} />
+              <ListItemSecondaryAction>
+                <CopyTextButton text={entityRef} />
+              </ListItemSecondaryAction>
+            </ListItem>
           </List>
         </Container>
 
@@ -136,9 +152,6 @@ export function OverviewPage(props: { entity: AlphaEntity }) {
                   <List dense subheader={<ListSubheader>{type}</ListSubheader>}>
                     {groupRelations.map(group => (
                       <ListItem key={group.targetRef}>
-                        <ListItemIcon>
-                          <EntityKindIcon entityRef={group.targetRef} />
-                        </ListItemIcon>
                         <ListItemText
                           primary={
                             <EntityRefLink entityRef={group.targetRef} />

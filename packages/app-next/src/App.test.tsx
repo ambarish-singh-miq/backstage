@@ -16,10 +16,9 @@
 
 import { renderWithEffects } from '@backstage/test-utils';
 
-jest.mock('@backstage/plugin-graphiql', () => ({
-  ...jest.requireActual('@backstage/plugin-graphiql'),
-  GraphiQLIcon: () => null,
-}));
+// Rarely, and only in windows CI, do these tests take slightly more than the
+// default five seconds
+jest.setTimeout(15_000);
 
 describe('App', () => {
   it('should render', async () => {

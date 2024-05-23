@@ -18,6 +18,7 @@ import { FSWatcher, watch } from 'chokidar';
 
 import { BackendServeOptions } from '../bundler/types';
 import type { ChildProcess } from 'child_process';
+import { ctrlc } from 'ctrlc-windows';
 import { IpcServer } from './IpcServer';
 import { ServerDataStore } from './ServerDataStore';
 import debounce from 'lodash/debounce';
@@ -27,10 +28,10 @@ import { paths } from '../paths';
 import spawn from 'cross-spawn';
 
 const loaderArgs = [
+  '--enable-source-maps',
   '--require',
-  require.resolve('@esbuild-kit/cjs-loader'),
-  '--loader',
-  require.resolve('@esbuild-kit/esm-loader'),
+  require.resolve('@backstage/cli/config/nodeTransform.cjs'),
+  // TODO: Support modules, although there's currently no way to load them since import() is transpiled tp require()
 ];
 
 export async function startBackendExperimental(options: BackendServeOptions) {
@@ -44,11 +45,21 @@ export async function startBackendExperimental(options: BackendServeOptions) {
   ServerDataStore.bind(server);
 
   let exiting = false;
+  let firstStart = true;
   let child: ChildProcess | undefined;
   let watcher: FSWatcher | undefined = undefined;
   let shutdownPromise: Promise<void> | undefined = undefined;
 
+  const watchedPaths = new Set<string>();
+
   const restart = debounce(async () => {
+    if (firstStart) {
+      firstStart = false;
+    } else {
+      console.log();
+      console.log('Change detected, restarting the development server...');
+      console.log();
+    }
     // If a re-trigger happens during an existing shutdown, we just ignore it
     if (shutdownPromise) {
       return;
@@ -57,7 +68,11 @@ export async function startBackendExperimental(options: BackendServeOptions) {
     if (child && !child.killed && child.exitCode === null) {
       // We always wait for the existing process to exit, to make sure we don't get IPC conflicts
       shutdownPromise = new Promise(resolve => child!.once('exit', resolve));
-      child.kill();
+      if (process.platform === 'win32' && child.pid) {
+        ctrlc(child.pid);
+      } else {
+        child.kill();
+      }
       await shutdownPromise;
       shutdownPromise = undefined;
     }
@@ -81,6 +96,9 @@ export async function startBackendExperimental(options: BackendServeOptions) {
           : '--inspect-brk';
       optionArgs.push(inspect);
     }
+    if (options.require) {
+      optionArgs.push(`--require=${options.require}`);
+    }
 
     const userArgs = process.argv
       .slice(['node', 'backstage-cli', 'package', 'start'].length)
@@ -90,7 +108,7 @@ export async function startBackendExperimental(options: BackendServeOptions) {
       process.execPath,
       [...loaderArgs, ...optionArgs, options.entry, ...userArgs],
       {
-        stdio: ['inherit', 'inherit', 'inherit', 'ipc'],
+        stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
         env: {
           ...process.env,
           BACKSTAGE_CLI_CHANNEL: '1',
@@ -104,14 +122,18 @@ export async function startBackendExperimental(options: BackendServeOptions) {
 
     // This captures messages sent by @esbuild-kit/cjs-loader
     child.on('message', (data: { type?: string } | null) => {
-      if (typeof data === 'object' && data?.type === 'dependency') {
+      if (!watcher) {
+        return;
+      }
+      if (typeof data === 'object' && data?.type === 'watch') {
         let path = (data as { path: string }).path;
         if (path.startsWith('file:')) {
           path = fileURLToPath(path);
         }
 
-        if (isAbsolutePath(path)) {
-          watcher?.add(path);
+        if (isAbsolutePath(path) && !watchedPaths.has(path)) {
+          watchedPaths.add(path);
+          watcher.add(path);
         }
       }
     });
@@ -119,9 +141,8 @@ export async function startBackendExperimental(options: BackendServeOptions) {
 
   restart();
 
-  watcher = watch([paths.targetDir], {
+  watcher = watch(['./package.json'], {
     cwd: process.cwd(),
-    ignored: ['**/.*/**', '**/node_modules/**'],
     ignoreInitial: true,
     ignorePermissionErrors: true,
   }).on('all', restart);

@@ -14,7 +14,11 @@
  * limitations under the License.
  */
 
-import { setupRequestMockHandlers } from '@backstage/backend-test-utils';
+import {
+  createMockDirectory,
+  mockServices,
+  setupRequestMockHandlers,
+} from '@backstage/backend-test-utils';
 import { ConfigReader } from '@backstage/config';
 import { NotModifiedError, NotFoundError } from '@backstage/errors';
 import {
@@ -24,21 +28,26 @@ import {
 import { JsonObject } from '@backstage/types';
 import { rest } from 'msw';
 import { setupServer } from 'msw/node';
-import mockFs from 'mock-fs';
 import fs from 'fs-extra';
 import path from 'path';
-import { getVoidLogger } from '../logging';
 import { UrlReaderPredicateTuple } from './types';
 import { DefaultReadTreeResponseFactory } from './tree';
-import { GerritUrlReader } from './GerritUrlReader';
+import {
+  GITILES_BASE_URL_DEPRECATION_MESSSAGE,
+  GerritUrlReader,
+} from './GerritUrlReader';
 import getRawBody from 'raw-body';
+
+const mockDir = createMockDirectory({ mockOsTmpDir: true });
+const env = process.env;
+process.env = { ...env, DISABLE_GERRIT_GITILES_REQUIREMENT: '1' };
 
 const treeResponseFactory = DefaultReadTreeResponseFactory.create({
   config: new ConfigReader({}),
 });
 
 const cloneMock = jest.fn(() => Promise.resolve());
-jest.mock('../scm', () => ({
+jest.mock('./git', () => ({
   Git: {
     fromAuth: () => ({
       clone: cloneMock,
@@ -77,7 +86,7 @@ const gerritProcessorWithGitiles = new GerritUrlReader(
 const createReader = (config: JsonObject): UrlReaderPredicateTuple[] => {
   return GerritUrlReader.factory({
     config: new ConfigReader(config),
-    logger: getVoidLogger(),
+    logger: mockServices.logger.mock(),
     treeResponseFactory,
   });
 };
@@ -89,8 +98,14 @@ describe.skip('GerritUrlReader', () => {
   const worker = setupServer();
   setupRequestMockHandlers(worker);
 
+  beforeEach(() => {
+    mockDir.clear();
+    process.env = { ...env, DISABLE_GERRIT_GITILES_REQUIREMENT: '1' };
+  });
+
   afterAll(() => {
     jest.clearAllMocks();
+    process.env = env;
   });
 
   describe('reader factory', () => {
@@ -108,6 +123,29 @@ describe.skip('GerritUrlReader', () => {
         integrations: {},
       });
       expect(readers).toHaveLength(0);
+    });
+  });
+
+  describe('handle optional gitilesBaseUrl deprecation', () => {
+    it('should throw if gitilesBaseUrl is not set.', () => {
+      process.env = env;
+      expect(() =>
+        createReader({
+          integrations: {
+            gerrit: [{ host: 'gerrit.com' }],
+          },
+        }),
+      ).toThrow(GITILES_BASE_URL_DEPRECATION_MESSSAGE);
+    });
+    it('should not throw if gitilesBaseUrl requirement is overridden.', () => {
+      process.env = { ...env, DISABLE_GERRIT_GITILES_REQUIREMENT: '1' };
+      expect(() =>
+        createReader({
+          integrations: {
+            gerrit: [{ host: 'gerrit.com' }],
+          },
+        }),
+      ).not.toThrow();
     });
   });
 
@@ -249,14 +287,13 @@ describe.skip('GerritUrlReader', () => {
       path.resolve(__dirname, '__fixtures__/gerrit/gerrit-master-docs.tar.gz'),
     );
 
-    beforeEach(() => {
-      mockFs({
-        '/tmp/': mockFs.directory(),
-        '/tmp/gerrit-clone-123abc/repo/mkdocs.yml': mkdocsContent,
-        '/tmp/gerrit-clone-123abc/repo/docs/first.md': mdContent,
+    beforeEach(async () => {
+      mockDir.setContent({
+        'repo/mkdocs.yml': mkdocsContent,
+        'repo/docs/first.md': mdContent,
       });
       const spy = jest.spyOn(fs, 'mkdtemp');
-      spy.mockImplementation(() => '/tmp/gerrit-clone-123abc');
+      spy.mockImplementation(() => mockDir.path);
 
       worker.use(
         rest.get(
@@ -289,7 +326,6 @@ describe.skip('GerritUrlReader', () => {
     });
 
     afterEach(() => {
-      mockFs.restore();
       jest.clearAllMocks();
     });
 

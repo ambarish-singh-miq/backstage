@@ -14,8 +14,12 @@
  * limitations under the License.
  */
 
-import { DatabaseManager, getVoidLogger } from '@backstage/backend-common';
-import { TestDatabaseId, TestDatabases } from '@backstage/backend-test-utils';
+import { DatabaseManager } from '@backstage/backend-common';
+import {
+  TestDatabaseId,
+  TestDatabases,
+  mockServices,
+} from '@backstage/backend-test-utils';
 import { Duration } from 'luxon';
 import waitForExpect from 'wait-for-expect';
 import { TaskScheduler } from './TaskScheduler';
@@ -24,10 +28,8 @@ import { createTestScopedSignal } from './__testUtils__/createTestScopedSignal';
 jest.setTimeout(60_000);
 
 describe('TaskScheduler', () => {
-  const logger = getVoidLogger();
-  const databases = TestDatabases.create({
-    ids: ['POSTGRES_13', 'POSTGRES_9', 'SQLITE_3', 'MYSQL_8'],
-  });
+  const logger = mockServices.logger.mock();
+  const databases = TestDatabases.create();
   const testScopedSignal = createTestScopedSignal();
 
   async function createDatabase(

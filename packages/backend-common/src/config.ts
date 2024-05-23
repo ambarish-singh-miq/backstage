@@ -29,6 +29,7 @@ import { setRootLoggerRedactionList } from './logging/createRootLogger';
  * This function should only be called once, during the initialization of the backend.
  *
  * @public
+ * @deprecated Use {@link @backstage/backend-app-api#loadBackendConfig} instead.
  */
 export async function loadBackendConfig(options: {
   logger: LoggerService;
@@ -36,6 +37,7 @@ export async function loadBackendConfig(options: {
   remote?: LoadConfigOptionsRemote;
   additionalConfigs?: AppConfig[];
   argv: string[];
+  watch?: boolean;
 }): Promise<Config> {
   const secretEnumerator = await createConfigSecretEnumerator({
     logger: options.logger,

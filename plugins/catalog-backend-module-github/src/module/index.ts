@@ -14,9 +14,4 @@
  * limitations under the License.
  */
 
-export { catalogModuleGithubEntityProvider as default } from './catalogModuleGithubEntityProvider';
-export {
-  catalogModuleGithubOrgEntityProvider,
-  githubOrgEntityProviderTransformsExtensionPoint,
-  type GithubOrgEntityProviderTransformsExtensionPoint,
-} from './catalogModuleGithubOrgEntityProvider';
+export { githubCatalogModule as default } from './githubCatalogModule';

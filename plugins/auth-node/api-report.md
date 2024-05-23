@@ -21,6 +21,23 @@ import { Strategy } from 'passport';
 import { ZodSchema } from 'zod';
 import { ZodTypeDef } from 'zod';
 
+// @public (undocumented)
+export interface AuthOwnershipResolutionExtensionPoint {
+  // (undocumented)
+  setAuthOwnershipResolver(ownershipResolver: AuthOwnershipResolver): void;
+}
+
+// @public (undocumented)
+export const authOwnershipResolutionExtensionPoint: ExtensionPoint<AuthOwnershipResolutionExtensionPoint>;
+
+// @public
+export interface AuthOwnershipResolver {
+  // (undocumented)
+  resolveOwnershipEntityRefs(entity: Entity): Promise<{
+    ownershipEntityRefs: string[];
+  }>;
+}
+
 // @public @deprecated (undocumented)
 export type AuthProviderConfig = {
   baseUrl: string;
@@ -173,13 +190,13 @@ export function createOAuthRouteHandlers<TProfile>(
 ): AuthProviderRouteHandlers;
 
 // @public (undocumented)
-export function createProxyAuthenticator<TContext, TResult>(
-  authenticator: ProxyAuthenticator<TContext, TResult>,
-): ProxyAuthenticator<TContext, TResult>;
+export function createProxyAuthenticator<TContext, TResult, TProviderInfo>(
+  authenticator: ProxyAuthenticator<TContext, TResult, TProviderInfo>,
+): ProxyAuthenticator<TContext, TResult, TProviderInfo>;
 
 // @public (undocumented)
 export function createProxyAuthProviderFactory<TResult>(options: {
-  authenticator: ProxyAuthenticator<unknown, TResult>;
+  authenticator: ProxyAuthenticator<unknown, TResult, unknown>;
   profileTransform?: ProfileTransform<TResult>;
   signInResolver?: SignInResolver<TResult>;
   signInResolverFactories?: Record<
@@ -223,7 +240,7 @@ export class DefaultIdentityClient implements IdentityApi {
 // @public (undocumented)
 export function encodeOAuthState(state: OAuthState): string;
 
-// @public
+// @public @deprecated
 export function getBearerTokenFromAuthorizationHeader(
   authorizationHeader: unknown,
 ): string | undefined;
@@ -399,6 +416,7 @@ export type OAuthState = {
   scope?: string;
   redirectUrl?: string;
   flow?: string;
+  audience?: string;
 };
 
 // @public (undocumented)
@@ -537,7 +555,11 @@ export type ProfileTransform<TResult> = (
 }>;
 
 // @public (undocumented)
-export interface ProxyAuthenticator<TContext, TResult> {
+export interface ProxyAuthenticator<
+  TContext,
+  TResult,
+  TProviderInfo = undefined,
+> {
   // (undocumented)
   authenticate(
     options: {
@@ -546,17 +568,18 @@ export interface ProxyAuthenticator<TContext, TResult> {
     ctx: TContext,
   ): Promise<{
     result: TResult;
+    providerInfo?: TProviderInfo;
   }>;
   // (undocumented)
   defaultProfileTransform: ProfileTransform<TResult>;
   // (undocumented)
-  initialize(ctx: { config: Config }): Promise<TContext>;
+  initialize(ctx: { config: Config }): TContext;
 }
 
 // @public (undocumented)
 export interface ProxyAuthRouteHandlersOptions<TResult> {
   // (undocumented)
-  authenticator: ProxyAuthenticator<any, TResult>;
+  authenticator: ProxyAuthenticator<any, TResult, unknown>;
   // (undocumented)
   config: Config;
   // (undocumented)
@@ -632,6 +655,20 @@ export type TokenParams = {
     ent?: string[];
   } & Record<string, JsonValue>;
 };
+
+// @public
+export const tokenTypes: Readonly<{
+  user: Readonly<{
+    typParam: 'vnd.backstage.user';
+    audClaim: 'backstage';
+  }>;
+  limitedUser: Readonly<{
+    typParam: 'vnd.backstage.limited-user';
+  }>;
+  plugin: Readonly<{
+    typParam: 'vnd.backstage.plugin';
+  }>;
+}>;
 
 // @public
 export type WebMessageResponse =

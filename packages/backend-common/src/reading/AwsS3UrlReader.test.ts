@@ -16,7 +16,6 @@
 
 import { ConfigReader } from '@backstage/config';
 import { JsonObject } from '@backstage/types';
-import { getVoidLogger } from '../logging';
 import { DefaultReadTreeResponseFactory } from './tree';
 import { DEFAULT_REGION, AwsS3UrlReader, parseUrl } from './AwsS3UrlReader';
 import {
@@ -37,6 +36,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { sdkStreamMixin } from '@aws-sdk/util-stream-node';
 import fs from 'fs';
+import { mockServices } from '@backstage/backend-test-utils';
 
 const treeResponseFactory = DefaultReadTreeResponseFactory.create({
   config: new ConfigReader({}),
@@ -52,6 +52,39 @@ describe('parseUrl', () => {
       path: 'a/puppy.jpg',
       bucket: 'my.bucket-3',
       region: 'us-east-1',
+    });
+    expect(
+      parseUrl('https://s3.amazonaws.com.cn/my.bucket-3/a/puppy.jpg', {
+        host: 'amazonaws.com',
+      }),
+    ).toEqual({
+      path: 'a/puppy.jpg',
+      bucket: 'my.bucket-3',
+      region: 'us-east-1',
+    });
+    expect(
+      parseUrl(
+        'https://ec-backstage-staging.s3.cn-north-1.amazonaws.com.cn/payments-prod-oas30.json',
+        {
+          host: 'amazonaws.com',
+        },
+      ),
+    ).toEqual({
+      path: 'payments-prod-oas30.json',
+      bucket: 'ec-backstage-staging',
+      region: 'cn-north-1',
+    });
+    expect(
+      parseUrl(
+        'https://ec-backstage-staging.s3.cn-north-1.amazonaws.com.cn/payments-prod-oas30.json',
+        {
+          host: 'amazonaws.com.cn',
+        },
+      ),
+    ).toEqual({
+      path: 'payments-prod-oas30.json',
+      bucket: 'ec-backstage-staging',
+      region: 'cn-north-1',
     });
     expect(
       parseUrl('https://s3.us-west-2.amazonaws.com/my.bucket-3/a/puppy.jpg', {
@@ -133,7 +166,7 @@ describe('AwsS3UrlReader', () => {
   const createReader = (config: JsonObject): UrlReaderPredicateTuple[] => {
     return AwsS3UrlReader.factory({
       config: new ConfigReader(config),
-      logger: getVoidLogger(),
+      logger: mockServices.logger.mock(),
       treeResponseFactory,
     });
   };

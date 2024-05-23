@@ -1,5 +1,217 @@
 # @backstage/config-loader
 
+## 1.8.0
+
+### Minor Changes
+
+- 2ce31b3: The default environment variable substitution function will now trim whitespace characters from the substituted value. This alleviates bugs where whitespace characters are mistakenly included in environment variables.
+
+  If you depend on the old behavior, you can override the default substitution function with your own, for example:
+
+  ```ts
+  ConfigSources.default({
+    substitutionFunc: async name => process.env[name],
+  });
+  ```
+
+- 99bab65: Support parameter substitution for environment variables
+
+### Patch Changes
+
+- Updated dependencies
+  - @backstage/cli-common@0.1.13
+  - @backstage/config@1.2.0
+  - @backstage/errors@1.2.4
+  - @backstage/types@1.1.1
+
+## 1.8.0-next.0
+
+### Minor Changes
+
+- 99bab65: Support parameter substitution for environment variables
+
+### Patch Changes
+
+- Updated dependencies
+  - @backstage/cli-common@0.1.13
+  - @backstage/config@1.2.0
+  - @backstage/errors@1.2.4
+  - @backstage/types@1.1.1
+
+## 1.7.0
+
+### Minor Changes
+
+- db8358d: Forward `null` values read from configuration files in configuration data, rather than treating them as an absence of config.
+
+### Patch Changes
+
+- Updated dependencies
+  - @backstage/config@1.2.0
+  - @backstage/errors@1.2.4
+  - @backstage/cli-common@0.1.13
+  - @backstage/types@1.1.1
+
+## 1.7.0-next.1
+
+### Minor Changes
+
+- db8358d: Forward `null` values read from configuration files in configuration data, rather than treating them as an absence of config.
+
+### Patch Changes
+
+- Updated dependencies
+  - @backstage/config@1.2.0-next.1
+  - @backstage/cli-common@0.1.13
+  - @backstage/errors@1.2.4-next.0
+  - @backstage/types@1.1.1
+
+## 1.6.3-next.0
+
+### Patch Changes
+
+- Updated dependencies
+  - @backstage/errors@1.2.4-next.0
+  - @backstage/config@1.1.2-next.0
+  - @backstage/cli-common@0.1.13
+  - @backstage/types@1.1.1
+
+## 1.6.2
+
+### Patch Changes
+
+- 0a9a03c: Make schema processing gracefully handle an empty config.
+- 6bb6f3e: Updated dependency `fs-extra` to `^11.2.0`.
+  Updated dependency `@types/fs-extra` to `^11.0.0`.
+- bf3da16: Updated dependency `typescript-json-schema` to `^0.63.0`.
+- Updated dependencies
+  - @backstage/cli-common@0.1.13
+  - @backstage/config@1.1.1
+  - @backstage/errors@1.2.3
+  - @backstage/types@1.1.1
+
+## 1.6.2-next.0
+
+### Patch Changes
+
+- 0a9a03c: Make schema processing gracefully handle an empty config.
+- Updated dependencies
+  - @backstage/cli-common@0.1.13
+  - @backstage/config@1.1.1
+  - @backstage/errors@1.2.3
+  - @backstage/types@1.1.1
+
+## 1.6.1
+
+### Patch Changes
+
+- 7acbb5a: Removed `mock-fs` dev dependency.
+- Updated dependencies
+  - @backstage/cli-common@0.1.13
+  - @backstage/config@1.1.1
+  - @backstage/errors@1.2.3
+  - @backstage/types@1.1.1
+
+## 1.6.1-next.0
+
+### Patch Changes
+
+- 7acbb5a: Removed `mock-fs` dev dependency.
+- Updated dependencies
+  - @backstage/config@1.1.1
+  - @backstage/cli-common@0.1.13
+  - @backstage/errors@1.2.3
+  - @backstage/types@1.1.1
+
+## 1.6.0
+
+### Minor Changes
+
+- 24f5a85: Add "path" to `TransformFunc` context
+
+### Patch Changes
+
+- Updated dependencies
+  - @backstage/cli-common@0.1.13
+  - @backstage/config@1.1.1
+  - @backstage/errors@1.2.3
+  - @backstage/types@1.1.1
+
+## 1.6.0-next.0
+
+### Minor Changes
+
+- 24f5a85: Add "path" to `TransformFunc` context
+
+### Patch Changes
+
+- Updated dependencies
+  - @backstage/cli-common@0.1.13
+  - @backstage/config@1.1.1
+  - @backstage/errors@1.2.3
+  - @backstage/types@1.1.1
+
+## 1.5.3
+
+### Patch Changes
+
+- 22ca64f117: Correctly resolve config targets into absolute paths
+- 087bab5b42: Updated dependency `typescript-json-schema` to `^0.62.0`.
+- Updated dependencies
+  - @backstage/cli-common@0.1.13
+  - @backstage/config@1.1.1
+  - @backstage/errors@1.2.3
+  - @backstage/types@1.1.1
+
+## 1.5.2-next.0
+
+### Patch Changes
+
+- 22ca64f117: Correctly resolve config targets into absolute paths
+- Updated dependencies
+  - @backstage/cli-common@0.1.13
+  - @backstage/config@1.1.1
+  - @backstage/errors@1.2.3
+  - @backstage/types@1.1.1
+
+## 1.5.1
+
+### Patch Changes
+
+- 0b55f773a7: Removed some unused dependencies
+- 30c553c1d2: Updated dependency `typescript-json-schema` to `^0.61.0`.
+- 773ea341d2: The `FileConfigSource` will now retry file reading after a short delay if it reads an empty file. This is to avoid flakiness during watch mode where change events can trigger before the file content has been written.
+- a4617c422a: Added `watch` option to configuration loaders that can be used to disable file watching by setting it to `false`.
+- Updated dependencies
+  - @backstage/errors@1.2.3
+  - @backstage/cli-common@0.1.13
+  - @backstage/config@1.1.1
+  - @backstage/types@1.1.1
+
+## 1.5.1-next.1
+
+### Patch Changes
+
+- 0b55f773a7: Removed some unused dependencies
+- 30c553c1d2: Updated dependency `typescript-json-schema` to `^0.61.0`.
+- a4617c422a: Added `watch` option to configuration loaders that can be used to disable file watching by setting it to `false`.
+- Updated dependencies
+  - @backstage/errors@1.2.3-next.0
+  - @backstage/cli-common@0.1.13-next.0
+  - @backstage/config@1.1.1-next.0
+  - @backstage/types@1.1.1
+
+## 1.5.1-next.0
+
+### Patch Changes
+
+- 773ea341d2: The `FileConfigSource` will now retry file reading after a short delay if it reads an empty file. This is to avoid flakiness during watch mode where change events can trigger before the file content has been written.
+- Updated dependencies
+  - @backstage/cli-common@0.1.13-next.0
+  - @backstage/config@1.1.0
+  - @backstage/errors@1.2.2
+  - @backstage/types@1.1.1
+
 ## 1.5.0
 
 ### Minor Changes

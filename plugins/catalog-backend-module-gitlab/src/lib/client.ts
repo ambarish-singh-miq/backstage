@@ -13,18 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import fetch from 'node-fetch';
 import {
   getGitLabRequestOptions,
   GitLabIntegrationConfig,
 } from '@backstage/integration';
-import { Logger } from 'winston';
+import fetch from 'node-fetch';
+import { LoggerService } from '@backstage/backend-plugin-api';
+
 import {
-  GitLabGroup,
   GitLabDescendantGroupsResponse,
+  GitLabGroup,
   GitLabGroupMembersResponse,
+  GitLabProject,
   GitLabUser,
+  PagedResponse,
 } from './types';
 
 export type CommonListOptions = {
@@ -44,16 +46,14 @@ interface UserListOptions extends CommonListOptions {
   exclude_internal?: boolean | undefined;
 }
 
-export type PagedResponse<T> = {
-  items: T[];
-  nextPage?: number;
-};
-
 export class GitLabClient {
   private readonly config: GitLabIntegrationConfig;
-  private readonly logger: Logger;
+  private readonly logger: LoggerService;
 
-  constructor(options: { config: GitLabIntegrationConfig; logger: Logger }) {
+  constructor(options: {
+    config: GitLabIntegrationConfig;
+    logger: LoggerService;
+  }) {
     this.config = options.config;
     this.logger = options.logger;
   }
@@ -81,6 +81,39 @@ export class GitLabClient {
     return this.pagedRequest(`/projects`, options);
   }
 
+  async getProjectById(
+    projectId: number,
+    options?: CommonListOptions,
+  ): Promise<GitLabProject> {
+    // Make the request to the GitLab API
+    const response = await this.nonPagedRequest(
+      `/projects/${projectId}`,
+      options,
+    );
+
+    return response;
+  }
+
+  async getGroupById(
+    groupId: number,
+    options?: CommonListOptions,
+  ): Promise<GitLabGroup> {
+    // Make the request to the GitLab API
+    const response = await this.nonPagedRequest(`/groups/${groupId}`, options);
+
+    return response;
+  }
+
+  async getUserById(
+    userId: number,
+    options?: CommonListOptions,
+  ): Promise<GitLabUser> {
+    // Make the request to the GitLab API
+    const response = await this.nonPagedRequest(`/users/${userId}`, options);
+
+    return response;
+  }
+
   async listUsers(
     options?: UserListOptions,
   ): Promise<PagedResponse<GitLabUser>> {
@@ -88,6 +121,22 @@ export class GitLabClient {
       ...options,
       without_project_bots: true,
       exclude_internal: true,
+    });
+  }
+
+  async listSaaSUsers(
+    groupPath: string,
+    options?: CommonListOptions,
+  ): Promise<PagedResponse<GitLabUser>> {
+    return this.pagedRequest(
+      `/groups/${encodeURIComponent(groupPath)}/members/all`,
+      {
+        ...options,
+        show_seat_info: true,
+      },
+    ).then(resp => {
+      resp.items = resp.items.filter(user => user.is_using_seat);
+      return resp;
     });
   }
 
@@ -124,6 +173,7 @@ export class GitLabClient {
                       name
                       description
                       fullPath
+                      visibility
                       parent {
                         id
                       }
@@ -158,6 +208,7 @@ export class GitLabClient {
           name: groupItem.name,
           description: groupItem.description,
           full_path: groupItem.fullPath,
+          visibility: groupItem.visibility,
           parent_id: Number(
             groupItem.parent.id.replace(/^gid:\/\/gitlab\/Group\//, ''),
           ),
@@ -205,7 +256,7 @@ export class GitLabClient {
                       user {
                         id
                         username
-                        commitEmail
+                        publicEmail
                         name
                         state
                         webUrl
@@ -240,7 +291,7 @@ export class GitLabClient {
         const formattedUserResponse = {
           id: Number(userItem.user.id.replace(/^gid:\/\/gitlab\/User\//, '')),
           username: userItem.user.username,
-          email: userItem.user.commitEmail,
+          email: userItem.user.publicEmail,
           name: userItem.user.name,
           state: userItem.user.state,
           web_url: userItem.user.webUrl,
@@ -308,9 +359,13 @@ export class GitLabClient {
     options?: CommonListOptions,
   ): Promise<PagedResponse<T>> {
     const request = new URL(`${this.config.apiBaseUrl}${endpoint}`);
+
     for (const key in options) {
-      if (options[key]) {
-        request.searchParams.append(key, options[key]!.toString());
+      if (options.hasOwnProperty(key)) {
+        const value = options[key];
+        if (value !== undefined && value !== '') {
+          request.searchParams.append(key, value.toString());
+        }
       }
     }
 
@@ -319,6 +374,7 @@ export class GitLabClient {
       request.toString(),
       getGitLabRequestOptions(this.config),
     );
+
     if (!response.ok) {
       throw new Error(
         `Unexpected response when fetching ${request.toString()}. Expected 200 but got ${
@@ -326,6 +382,7 @@ export class GitLabClient {
         } - ${response.statusText}`,
       );
     }
+
     return response.json().then(items => {
       const nextPage = response.headers.get('x-next-page');
 
@@ -334,6 +391,37 @@ export class GitLabClient {
         nextPage: nextPage ? Number(nextPage) : null,
       } as PagedResponse<any>;
     });
+  }
+
+  async nonPagedRequest<T = any>(
+    endpoint: string,
+    options?: CommonListOptions,
+  ): Promise<T> {
+    const request = new URL(`${this.config.apiBaseUrl}${endpoint}`);
+
+    for (const key in options) {
+      if (options.hasOwnProperty(key)) {
+        const value = options[key];
+        if (value !== undefined && value !== '') {
+          request.searchParams.append(key, value.toString());
+        }
+      }
+    }
+
+    const response = await fetch(
+      request.toString(),
+      getGitLabRequestOptions(this.config),
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Unexpected response when fetching ${request.toString()}. Expected 200 but got ${
+          response.status
+        } - ${response.statusText}`,
+      );
+    }
+
+    return response.json();
   }
 }
 

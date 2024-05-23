@@ -15,17 +15,14 @@
  */
 
 import React, { useState } from 'react';
-import {
-  Box,
-  Button,
-  Drawer,
-  Grid,
-  Typography,
-  useMediaQuery,
-  useTheme,
-} from '@material-ui/core';
+import Box from '@material-ui/core/Box';
+import Button from '@material-ui/core/Button';
+import Drawer from '@material-ui/core/Drawer';
+import Grid from '@material-ui/core/Grid';
+import Typography from '@material-ui/core/Typography';
+import useMediaQuery from '@material-ui/core/useMediaQuery';
+import { Theme, useTheme } from '@material-ui/core/styles';
 import FilterListIcon from '@material-ui/icons/FilterList';
-import { BackstageTheme } from '@backstage/theme';
 
 /** @public */
 export const Filters = (props: {
@@ -35,10 +32,10 @@ export const Filters = (props: {
     drawerAnchor?: 'left' | 'right' | 'top' | 'bottom';
   };
 }) => {
-  const isScreenSmallerThanBreakpoint = useMediaQuery<BackstageTheme>(theme =>
+  const isScreenSmallerThanBreakpoint = useMediaQuery((theme: Theme) =>
     theme.breakpoints.down(props.options?.drawerBreakpoint ?? 'md'),
   );
-  const theme = useTheme<BackstageTheme>();
+  const theme = useTheme();
   const [filterDrawerOpen, setFilterDrawerOpen] = useState<boolean>(false);
 
   return isScreenSmallerThanBreakpoint ? (

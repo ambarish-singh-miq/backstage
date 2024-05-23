@@ -6,16 +6,20 @@
 /// <reference types="node" />
 
 import type { AppConfig } from '@backstage/config';
+import { AuthService } from '@backstage/backend-plugin-api';
 import { BackendFeature } from '@backstage/backend-plugin-api';
-import { CacheClient } from '@backstage/backend-common';
+import { CacheService } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
+import { ConfigSchema } from '@backstage/config-loader';
 import { CorsOptions } from 'cors';
+import { DiscoveryService } from '@backstage/backend-plugin-api';
 import { ErrorRequestHandler } from 'express';
 import { Express as Express_2 } from 'express';
 import { Format } from 'logform';
 import { Handler } from 'express';
 import { HelmetOptions } from 'helmet';
 import * as http from 'http';
+import { HttpAuthService } from '@backstage/backend-plugin-api';
 import { HttpRouterService } from '@backstage/backend-plugin-api';
 import { HumanDuration } from '@backstage/types';
 import { IdentityService } from '@backstage/backend-plugin-api';
@@ -25,7 +29,6 @@ import { LoadConfigOptionsRemote } from '@backstage/config-loader';
 import { LoggerService } from '@backstage/backend-plugin-api';
 import { PermissionsService } from '@backstage/backend-plugin-api';
 import { PluginDatabaseManager } from '@backstage/backend-common';
-import { PluginEndpointDiscovery } from '@backstage/backend-common';
 import { RemoteConfigSourceOptions } from '@backstage/config-loader';
 import { RequestHandler } from 'express';
 import { RequestListener } from 'http';
@@ -34,11 +37,16 @@ import { RootHttpRouterService } from '@backstage/backend-plugin-api';
 import { RootLifecycleService } from '@backstage/backend-plugin-api';
 import { RootLoggerService } from '@backstage/backend-plugin-api';
 import { SchedulerService } from '@backstage/backend-plugin-api';
+import type { Server } from 'node:http';
 import { ServiceFactory } from '@backstage/backend-plugin-api';
 import { ServiceFactoryOrFunction } from '@backstage/backend-plugin-api';
 import { TokenManagerService } from '@backstage/backend-plugin-api';
 import { transport } from 'winston';
 import { UrlReader } from '@backstage/backend-common';
+import { UserInfoService } from '@backstage/backend-plugin-api';
+
+// @public (undocumented)
+export const authServiceFactory: () => ServiceFactory<AuthService, 'plugin'>;
 
 // @public (undocumented)
 export interface Backend {
@@ -57,13 +65,14 @@ export interface Backend {
   stop(): Promise<void>;
 }
 
-// @public (undocumented)
-export const cacheServiceFactory: () => ServiceFactory<CacheClient, 'plugin'>;
+// @public @deprecated (undocumented)
+export const cacheServiceFactory: () => ServiceFactory<CacheService, 'plugin'>;
 
 // @public (undocumented)
 export function createConfigSecretEnumerator(options: {
   logger: LoggerService;
   dir?: string;
+  schema?: ConfigSchema;
 }): Promise<(config: Config) => Iterable<string>>;
 
 // @public
@@ -91,7 +100,7 @@ export interface CreateSpecializedBackendOptions {
   defaultServiceFactories: ServiceFactoryOrFunction[];
 }
 
-// @public (undocumented)
+// @public @deprecated (undocumented)
 export const databaseServiceFactory: () => ServiceFactory<
   PluginDatabaseManager,
   'plugin'
@@ -112,9 +121,9 @@ export interface DefaultRootHttpRouterOptions {
   indexPath?: string | false;
 }
 
-// @public (undocumented)
+// @public @deprecated (undocumented)
 export const discoveryServiceFactory: () => ServiceFactory<
-  PluginEndpointDiscovery,
+  DiscoveryService,
   'plugin'
 >;
 
@@ -127,6 +136,26 @@ export interface ExtendedHttpServer extends http.Server {
   // (undocumented)
   stop(): Promise<void>;
 }
+
+// @public @deprecated
+export class HostDiscovery implements DiscoveryService {
+  static fromConfig(
+    config: Config,
+    options?: {
+      basePath?: string;
+    },
+  ): HostDiscovery;
+  // (undocumented)
+  getBaseUrl(pluginId: string): Promise<string>;
+  // (undocumented)
+  getExternalBaseUrl(pluginId: string): Promise<string>;
+}
+
+// @public (undocumented)
+export const httpAuthServiceFactory: () => ServiceFactory<
+  HttpAuthService,
+  'plugin'
+>;
 
 // @public (undocumented)
 export interface HttpRouterFactoryOptions {
@@ -161,13 +190,13 @@ export type HttpServerOptions = {
   };
 };
 
-// @public
+// @public @deprecated
 export type IdentityFactoryOptions = {
   issuer?: string;
   algorithms?: string[];
 };
 
-// @public (undocumented)
+// @public @deprecated (undocumented)
 export const identityServiceFactory: (
   options?: IdentityFactoryOptions | undefined,
 ) => ServiceFactory<IdentityService, 'plugin'>;
@@ -179,7 +208,7 @@ export interface LifecycleMiddlewareOptions {
   startupRequestPauseTimeout?: HumanDuration;
 }
 
-// @public
+// @public @deprecated
 export const lifecycleServiceFactory: () => ServiceFactory<
   LifecycleService,
   'plugin'
@@ -190,6 +219,7 @@ export function loadBackendConfig(options: {
   remote?: LoadConfigOptionsRemote;
   argv: string[];
   additionalConfigs?: AppConfig[];
+  watch?: boolean;
 }): Promise<{
   config: Config;
 }>;
@@ -225,7 +255,7 @@ export interface MiddlewareFactoryOptions {
   logger: LoggerService;
 }
 
-// @public (undocumented)
+// @public @deprecated (undocumented)
 export const permissionsServiceFactory: () => ServiceFactory<
   PermissionsService,
   'plugin'
@@ -240,13 +270,15 @@ export function readHelmetOptions(config?: Config): HelmetOptions;
 // @public
 export function readHttpServerOptions(config?: Config): HttpServerOptions;
 
-// @public (undocumented)
+// @public @deprecated (undocumented)
 export interface RootConfigFactoryOptions {
   argv?: string[];
   remote?: Pick<RemoteConfigSourceOptions, 'reloadInterval'>;
+  // (undocumented)
+  watch?: boolean;
 }
 
-// @public (undocumented)
+// @public @deprecated (undocumented)
 export const rootConfigServiceFactory: (
   options?: RootConfigFactoryOptions | undefined,
 ) => ServiceFactory<RootConfigService, 'root'>;
@@ -255,6 +287,8 @@ export const rootConfigServiceFactory: (
 export interface RootHttpRouterConfigureContext {
   // (undocumented)
   app: Express_2;
+  // (undocumented)
+  applyDefaults: () => void;
   // (undocumented)
   config: RootConfigService;
   // (undocumented)
@@ -265,6 +299,8 @@ export interface RootHttpRouterConfigureContext {
   middleware: MiddlewareFactory;
   // (undocumented)
   routes: RequestHandler;
+  // (undocumented)
+  server: Server;
 }
 
 // @public (undocumented)
@@ -278,7 +314,7 @@ export const rootHttpRouterServiceFactory: (
   options?: RootHttpRouterFactoryOptions | undefined,
 ) => ServiceFactory<RootHttpRouterService, 'root'>;
 
-// @public
+// @public @deprecated
 export const rootLifecycleServiceFactory: () => ServiceFactory<
   RootLifecycleService,
   'root'
@@ -290,20 +326,26 @@ export const rootLoggerServiceFactory: () => ServiceFactory<
   'root'
 >;
 
-// @public (undocumented)
+// @public @deprecated (undocumented)
 export const schedulerServiceFactory: () => ServiceFactory<
   SchedulerService,
   'plugin'
 >;
 
-// @public (undocumented)
+// @public @deprecated (undocumented)
 export const tokenManagerServiceFactory: () => ServiceFactory<
   TokenManagerService,
   'plugin'
 >;
 
-// @public (undocumented)
+// @public @deprecated (undocumented)
 export const urlReaderServiceFactory: () => ServiceFactory<UrlReader, 'plugin'>;
+
+// @public (undocumented)
+export const userInfoServiceFactory: () => ServiceFactory<
+  UserInfoService,
+  'plugin'
+>;
 
 // @public
 export class WinstonLogger implements RootLoggerService {
@@ -330,12 +372,12 @@ export class WinstonLogger implements RootLoggerService {
 // @public (undocumented)
 export interface WinstonLoggerOptions {
   // (undocumented)
-  format: Format;
+  format?: Format;
   // (undocumented)
-  level: string;
+  level?: string;
   // (undocumented)
   meta?: JsonObject;
   // (undocumented)
-  transports: transport[];
+  transports?: transport[];
 }
 ```

@@ -15,14 +15,15 @@
  */
 
 import { ConfigReader } from '@backstage/config';
-import { setupRequestMockHandlers } from '@backstage/backend-test-utils';
+import {
+  createMockDirectory,
+  mockServices,
+  setupRequestMockHandlers,
+} from '@backstage/backend-test-utils';
 import fs from 'fs-extra';
-import mockFs from 'mock-fs';
 import { rest } from 'msw';
 import { setupServer } from 'msw/node';
-import os from 'os';
 import path from 'path';
-import { getVoidLogger } from '../logging';
 import { GitlabUrlReader } from './GitlabUrlReader';
 import { DefaultReadTreeResponseFactory } from './tree';
 import { NotModifiedError, NotFoundError } from '@backstage/errors';
@@ -31,7 +32,9 @@ import {
   readGitLabIntegrationConfig,
 } from '@backstage/integration';
 
-const logger = getVoidLogger();
+const logger = mockServices.logger.mock();
+
+const mockDir = createMockDirectory({ mockOsTmpDir: true });
 
 const treeResponseFactory = DefaultReadTreeResponseFactory.create({
   config: new ConfigReader({}),
@@ -65,18 +68,8 @@ const hostedGitlabProcessor = new GitlabUrlReader(
   { treeResponseFactory },
 );
 
-const tmpDir = os.platform() === 'win32' ? 'C:\\tmp' : '/tmp';
-
 describe('GitlabUrlReader', () => {
-  beforeEach(() => {
-    mockFs({
-      [tmpDir]: mockFs.directory(),
-    });
-  });
-
-  afterEach(() => {
-    mockFs.restore();
-  });
+  beforeEach(mockDir.clear);
 
   const worker = setupServer();
   setupRequestMockHandlers(worker);
@@ -400,7 +393,7 @@ describe('GitlabUrlReader', () => {
         'https://gitlab.com/backstage/mock',
       );
 
-      const dir = await response.dir({ targetDir: tmpDir });
+      const dir = await response.dir({ targetDir: mockDir.path });
 
       await expect(
         fs.readFile(path.join(dir, 'mkdocs.yml'), 'utf8'),
@@ -457,7 +450,7 @@ describe('GitlabUrlReader', () => {
         'https://gitlab.com/backstage/mock/tree/main/docs',
       );
 
-      const dir = await response.dir({ targetDir: tmpDir });
+      const dir = await response.dir({ targetDir: mockDir.path });
 
       await expect(
         fs.readFile(path.join(dir, 'index.md'), 'utf8'),

@@ -18,10 +18,11 @@ import { Config } from '@backstage/config';
 import React, {
   ComponentType,
   PropsWithChildren,
+  Suspense,
   useMemo,
   useRef,
 } from 'react';
-import useAsync from 'react-use/lib/useAsync';
+import useAsync from 'react-use/esm/useAsync';
 import {
   ApiProvider,
   AppThemeSelector,
@@ -41,6 +42,9 @@ import {
   identityApiRef,
   BackstagePlugin,
   FeatureFlag,
+  fetchApiRef,
+  discoveryApiRef,
+  errorApiRef,
 } from '@backstage/core-plugin-api';
 import {
   AppLanguageApi,
@@ -85,6 +89,7 @@ import { AppRouter, getBasePath } from './AppRouter';
 import { AppLanguageSelector } from '../apis/implementations/AppLanguageApi';
 import { I18nextTranslationApi } from '../apis/implementations/TranslationApi';
 import { overrideBaseUrlConfigs } from './overrideBaseUrlConfigs';
+import { isProtectedApp } from './isProtectedApp';
 
 type CompatiblePlugin =
   | BackstagePlugin
@@ -239,11 +244,21 @@ export class AppManager implements BackstageApp {
       );
 
       const { routing, featureFlags, routeBindings } = useMemo(() => {
+        const usesReactRouterBeta = isReactRouterBeta();
+        if (usesReactRouterBeta) {
+          // eslint-disable-next-line no-console
+          console.warn(`
+DEPRECATION WARNING: React Router Beta is deprecated and support for it will be removed in a future release.
+                     Please migrate to use React Router v6 stable.
+                     See https://backstage.io/docs/tutorials/react-router-stable-migration
+`);
+        }
+
         const result = traverseElementTree({
           root: children,
           discoverers: [childDiscoverer, routeElementDiscoverer],
           collectors: {
-            routing: isReactRouterBeta()
+            routing: usesReactRouterBeta
               ? routingV1Collector
               : routingV2Collector,
             collectedPlugins: pluginCollector,
@@ -341,10 +356,28 @@ export class AppManager implements BackstageApp {
         }
       }
 
-      const { ThemeProvider = AppThemeProvider } = this.components;
+      const { ThemeProvider = AppThemeProvider, Progress } = this.components;
+
+      const apis = this.getApiHolder();
+
+      if (isProtectedApp()) {
+        const errorApi = apis.get(errorApiRef);
+        const fetchApi = apis.get(fetchApiRef);
+        const discoveryApi = apis.get(discoveryApiRef);
+        if (!errorApi || !fetchApi || !discoveryApi) {
+          throw new Error(
+            'App is running in protected mode but missing required APIs',
+          );
+        }
+        this.appIdentityProxy.enableCookieAuth({
+          errorApi,
+          fetchApi,
+          discoveryApi,
+        });
+      }
 
       return (
-        <ApiProvider apis={this.getApiHolder()}>
+        <ApiProvider apis={apis}>
           <AppContextProvider appContext={appContext}>
             <ThemeProvider>
               <RoutingProvider
@@ -360,7 +393,7 @@ export class AppManager implements BackstageApp {
                     appIdentityProxy: this.appIdentityProxy,
                   }}
                 >
-                  {children}
+                  <Suspense fallback={<Progress />}>{children}</Suspense>
                 </InternalAppContext.Provider>
               </RoutingProvider>
             </ThemeProvider>

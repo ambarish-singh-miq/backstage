@@ -17,7 +17,7 @@ import { IndexableResultSet } from '@backstage/plugin-search-common';
 import { Logger } from 'winston';
 import { LoggerService } from '@backstage/backend-plugin-api';
 import { Readable } from 'stream';
-import { SearchEngine } from '@backstage/plugin-search-common';
+import { SearchEngine } from '@backstage/plugin-search-backend-node';
 import { SearchQuery } from '@backstage/plugin-search-common';
 import { TransportRequestPromise } from '@opensearch-project/opensearch/lib/Transport';
 import { TransportRequestPromise as TransportRequestPromise_2 } from '@elastic/elasticsearch/lib/Transport';
@@ -370,6 +370,7 @@ export type ElasticSearchSearchEngineIndexerOptions = {
   logger: Logger | LoggerService;
   elasticSearchClientWrapper: ElasticSearchClientWrapper;
   batchSize: number;
+  skipRefresh?: boolean;
 };
 
 // @public (undocumented)

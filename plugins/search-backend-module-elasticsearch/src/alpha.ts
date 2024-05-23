@@ -45,8 +45,8 @@ export const elasticsearchTranslatorExtensionPoint =
  * @alpha
  */
 export default createBackendModule({
-  moduleId: 'elasticsearchEngine',
   pluginId: 'search',
+  moduleId: 'elasticsearch-engine',
   register(env) {
     let translator: ElasticSearchQueryTranslator | undefined;
 
@@ -68,6 +68,15 @@ export default createBackendModule({
         config: coreServices.rootConfig,
       },
       async init({ searchEngineRegistry, logger, config }) {
+        const baseKey = 'search.elasticsearch';
+        const baseConfig = config.getOptional(baseKey);
+        if (!baseConfig) {
+          logger.warn(
+            'No configuration found under "search.elasticsearch" key.  Skipping search engine inititalization.',
+          );
+          return;
+        }
+
         searchEngineRegistry.setSearchEngine(
           await ElasticSearchSearchEngine.fromConfig({
             logger,

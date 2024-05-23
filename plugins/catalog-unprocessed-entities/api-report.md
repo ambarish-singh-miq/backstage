@@ -14,6 +14,7 @@ import { RouteRef } from '@backstage/core-plugin-api';
 
 // @public
 export interface CatalogUnprocessedEntitiesApi {
+  delete(entityId: string): Promise<void>;
   failed(): Promise<CatalogUnprocessedEntitiesApiResponse>;
   pending(): Promise<CatalogUnprocessedEntitiesApiResponse>;
 }
@@ -34,7 +35,6 @@ export const catalogUnprocessedEntitiesPlugin: BackstagePlugin<
   {
     root: RouteRef<undefined>;
   },
-  {},
   {}
 >;
 

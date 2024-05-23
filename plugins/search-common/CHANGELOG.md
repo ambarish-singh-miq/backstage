@@ -1,5 +1,71 @@
 # @backstage/plugin-search-common
 
+## 1.2.11
+
+### Patch Changes
+
+- 744c0cb: Deprecate `QueryTranslator`, `QueryRequestOptions` and `SearchEngine` in favor of the types exported from `@backstage/plugin-search-backend-node`.
+- Updated dependencies
+  - @backstage/plugin-permission-common@0.7.13
+  - @backstage/types@1.1.1
+
+## 1.2.11-next.1
+
+### Patch Changes
+
+- Updated dependencies
+  - @backstage/plugin-permission-common@0.7.13-next.1
+  - @backstage/types@1.1.1
+
+## 1.2.11-next.0
+
+### Patch Changes
+
+- 744c0cb: Deprecate `QueryTranslator`, `QueryRequestOptions` and `SearchEngine` in favor of the types exported from `@backstage/plugin-search-backend-node`.
+- Updated dependencies
+  - @backstage/plugin-permission-common@0.7.13-next.0
+  - @backstage/types@1.1.1
+
+## 1.2.10
+
+### Patch Changes
+
+- Updated dependencies
+  - @backstage/plugin-permission-common@0.7.12
+  - @backstage/types@1.1.1
+
+## 1.2.9
+
+### Patch Changes
+
+- Updated dependencies
+  - @backstage/plugin-permission-common@0.7.11
+  - @backstage/types@1.1.1
+
+## 1.2.8
+
+### Patch Changes
+
+- Updated dependencies
+  - @backstage/plugin-permission-common@0.7.10
+  - @backstage/types@1.1.1
+
+## 1.2.7
+
+### Patch Changes
+
+- Updated dependencies
+  - @backstage/types@1.1.1
+  - @backstage/plugin-permission-common@0.7.9
+
+## 1.2.7-next.0
+
+### Patch Changes
+
+- Updated dependencies
+  - @backstage/types@1.1.1
+  - @backstage/plugin-permission-common@0.7.9-next.0
+
 ## 1.2.6
 
 ### Patch Changes

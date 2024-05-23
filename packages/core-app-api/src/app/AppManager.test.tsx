@@ -20,7 +20,8 @@ import {
   renderWithEffects,
   withLogCollector,
 } from '@backstage/test-utils';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React, { PropsWithChildren, ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import {
@@ -35,16 +36,38 @@ import {
   createRoutableExtension,
   analyticsApiRef,
   useApi,
+  errorApiRef,
+  fetchApiRef,
+  discoveryApiRef,
+  identityApiRef,
 } from '@backstage/core-plugin-api';
+import { AppRouter } from './AppRouter';
 import { AppManager } from './AppManager';
 import { AppComponents, AppIcons } from './types';
 import { FeatureFlagged } from '../routing/FeatureFlagged';
+import {
+  createTranslationRef,
+  useTranslationRef,
+} from '@backstage/core-plugin-api/alpha';
 
 describe('Integration Test', () => {
   const noOpAnalyticsApi = createApiFactory(
     analyticsApiRef,
     new NoOpAnalyticsApi(),
   );
+  const noopErrorApi = createApiFactory(errorApiRef, {
+    error$() {
+      return {
+        subscribe() {
+          return { unsubscribe() {}, closed: true };
+        },
+        [Symbol.observable]() {
+          return this;
+        },
+      };
+    },
+    post() {},
+  });
   const plugin1RouteRef = createRouteRef({ id: 'ref-1' });
   const plugin1RouteRef2 = createRouteRef({ id: 'ref-1-2' });
   const plugin2RouteRef = createRouteRef({ id: 'ref-2', params: ['x'] });
@@ -175,6 +198,10 @@ describe('Integration Test', () => {
     },
   ];
 
+  afterEach(() => {
+    localStorage.clear();
+  });
+
   it('runs happy paths', async () => {
     const app = new AppManager({
       apis: [noOpAnalyticsApi],
@@ -262,7 +289,7 @@ describe('Integration Test', () => {
 
   it('runs success with __experimentalTranslations', async () => {
     const app = new AppManager({
-      apis: [noOpAnalyticsApi],
+      apis: [noOpAnalyticsApi, noopErrorApi],
       defaultApis: [],
       themes,
       icons,
@@ -277,27 +304,41 @@ describe('Integration Test', () => {
       },
       __experimentalTranslations: {
         availableLanguages: ['en', 'de'],
+        defaultLanguage: 'de',
       },
     });
 
     const Provider = app.getProvider();
     const Router = app.getRouter();
 
+    const translationRef = createTranslationRef({
+      id: 'test',
+      messages: {
+        foo: 'Foo',
+      },
+      translations: {
+        de: () => Promise.resolve({ default: { foo: 'Bar' } }),
+      },
+    });
+
+    const TranslatedComponent = () => {
+      const { t } = useTranslationRef(translationRef);
+      return <div>translation: {t('foo')}</div>;
+    };
+
     await renderWithEffects(
       <Provider>
         <Router>
           <Routes>
-            <Route path="/" element={<ExposedComponent />} />
-            <Route path="/foo" element={<HiddenComponent />} />
+            <Route path="/" element={<TranslatedComponent />} />
           </Routes>
         </Router>
       </Provider>,
     );
 
-    expect(screen.getByText('extLink1: /')).toBeInTheDocument();
-    expect(screen.getByText('extLink2: /foo')).toBeInTheDocument();
-    expect(screen.getByText('extLink3: <none>')).toBeInTheDocument();
-    expect(screen.getByText('extLink4: <none>')).toBeInTheDocument();
+    await expect(
+      screen.findByText('translation: Bar'),
+    ).resolves.toBeInTheDocument();
   });
 
   it('should wait for the config to load before calling feature flags', async () => {
@@ -603,26 +644,24 @@ describe('Integration Test', () => {
     const Provider = app.getProvider();
     const Router = app.getRouter();
     const { error: errorLogs } = withLogCollector(() => {
-      expect(() =>
-        render(
-          <Provider>
-            <Router>
-              <Routes>
-                <Route path="/test/:thing" element={<ExposedComponent />}>
-                  <Route path="/some/:thing" element={<HiddenComponent />} />
-                </Route>
-              </Routes>
-            </Router>
-          </Provider>,
-        ),
-      ).toThrow(
-        'Parameter :thing is duplicated in path test/:thing/some/:thing',
+      render(
+        <Provider>
+          <Router>
+            <Routes>
+              <Route path="/test/:thing" element={<ExposedComponent />}>
+                <Route path="/some/:thing" element={<HiddenComponent />} />
+              </Route>
+            </Routes>
+          </Router>
+        </Provider>,
       );
     });
     expect(errorLogs).toEqual([
-      expect.stringContaining(
-        'The above error occurred in the <Provider> component',
-      ),
+      expect.objectContaining({
+        message: expect.stringContaining(
+          'Parameter :thing is duplicated in path test/:thing/some/:thing',
+        ),
+      }),
     ]);
   });
 
@@ -640,24 +679,22 @@ describe('Integration Test', () => {
     const Provider = app.getProvider();
     const Router = app.getRouter();
     const { error: errorLogs } = withLogCollector(() => {
-      expect(() =>
-        render(
-          <Provider>
-            <Router>
-              <Routes>
-                <Route path="/test/:thing" element={<ExposedComponent />} />
-              </Routes>
-            </Router>
-          </Provider>,
-        ),
-      ).toThrow(
-        /^External route 'extRouteRef1' of the 'blob' plugin must be bound to a target route/,
+      render(
+        <Provider>
+          <Router>
+            <Routes>
+              <Route path="/test/:thing" element={<ExposedComponent />} />
+            </Routes>
+          </Router>
+        </Provider>,
       );
     });
     expect(errorLogs).toEqual([
-      expect.stringContaining(
-        'The above error occurred in the <Provider> component',
-      ),
+      expect.objectContaining({
+        message: expect.stringMatching(
+          /^External route 'extRouteRef1' of the 'blob' plugin must be bound to a target route/,
+        ),
+      }),
     ]);
   });
 
@@ -784,5 +821,68 @@ describe('Integration Test', () => {
         ).toBeTruthy();
       },
     );
+  });
+
+  it('should clear app cookie when the user logs out', async () => {
+    const meta = global.document.createElement('meta');
+    meta.name = 'backstage-app-mode';
+    meta.content = 'protected';
+    global.document.head.appendChild(meta);
+
+    const fetchApiMock = {
+      fetch: jest.fn().mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+        }),
+      }),
+    };
+    const discoveryApiMock = {
+      getBaseUrl: jest.fn().mockResolvedValue('http://localhost:7007/app'),
+    };
+
+    const app = new AppManager({
+      icons,
+      themes,
+      components,
+      configLoader: async () => [],
+      defaultApis: [
+        noopErrorApi,
+        createApiFactory({
+          api: fetchApiRef,
+          deps: {},
+          factory: () => fetchApiMock,
+        }),
+        createApiFactory({
+          api: discoveryApiRef,
+          deps: {},
+          factory: () => discoveryApiMock,
+        }),
+      ],
+    });
+
+    const SignOutButton = () => {
+      const identityApi = useApi(identityApiRef);
+      return <button onClick={() => identityApi.signOut()}>Sign Out</button>;
+    };
+
+    const Root = app.createRoot(
+      <AppRouter>
+        <meta name="backstage-app-mode" content="protected" />
+        <SignOutButton />
+      </AppRouter>,
+    );
+    await renderWithEffects(<Root />);
+
+    await userEvent.click(screen.getByText('Sign Out'));
+
+    await waitFor(() =>
+      expect(fetchApiMock.fetch).toHaveBeenCalledWith(
+        'http://localhost:7007/app/.backstage/auth/v1/cookie',
+        { method: 'DELETE' },
+      ),
+    );
+
+    global.document.head.removeChild(meta);
   });
 });

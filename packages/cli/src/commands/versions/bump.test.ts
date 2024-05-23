@@ -15,10 +15,7 @@
  */
 
 import fs from 'fs-extra';
-import mockFs from 'mock-fs';
 import { Command } from 'commander';
-import { resolve as resolvePath } from 'path';
-import { paths } from '../../lib/paths';
 import * as runObj from '../../lib/run';
 import bump, { bumpBackstageJsonVersion, createVersionFinder } from './bump';
 import {
@@ -30,6 +27,10 @@ import { setupServer } from 'msw/node';
 import { rest } from 'msw';
 import { NotFoundError } from '@backstage/errors';
 import { Lockfile } from '../../lib/versioning/Lockfile';
+import {
+  MockDirectory,
+  createMockDirectory,
+} from '@backstage/backend-test-utils';
 
 // Avoid mutating the global http(s) agent used in other tests
 jest.mock('global-agent/bootstrap', () => {});
@@ -54,6 +55,19 @@ jest.mock('ora', () => ({
       }),
     };
   },
+}));
+
+let mockDir: MockDirectory;
+jest.mock('@backstage/cli-common', () => ({
+  ...jest.requireActual('@backstage/cli-common'),
+  findPaths: () => ({
+    resolveTargetRoot(filename: string) {
+      return mockDir.resolve(filename);
+    },
+    get targetDir() {
+      return mockDir.path;
+    },
+  }),
 }));
 
 jest.mock('../../lib/run', () => {
@@ -117,7 +131,17 @@ const lockfileMockResult = `${HEADER}
   version "1.0.0"
 `;
 
+// Avoid flakes by comparing sorted log lines. File system access is async, which leads to the log line order being indeterministic
+const expectLogsToMatch = (
+  recievedLogs: String[],
+  expected: String[],
+): void => {
+  expect(recievedLogs.filter(Boolean).sort()).toEqual(expected.sort());
+};
+
 describe('bump', () => {
+  mockDir = createMockDirectory();
+
   beforeEach(() => {
     mockFetchPackageInfo.mockImplementation(async name => ({
       name: name,
@@ -128,7 +152,6 @@ describe('bump', () => {
   });
 
   afterEach(() => {
-    mockFs.restore();
     jest.resetAllMocks();
   });
 
@@ -136,31 +159,34 @@ describe('bump', () => {
   setupRequestMockHandlers(worker);
 
   it('should bump backstage dependencies', async () => {
-    mockFs({
-      '/yarn.lock': lockfileMock,
-      '/package.json': JSON.stringify({
+    mockDir.setContent({
+      'yarn.lock': lockfileMock,
+      'package.json': JSON.stringify({
         workspaces: {
           packages: ['packages/*'],
         },
       }),
-      '/packages/a/package.json': JSON.stringify({
-        name: 'a',
-        dependencies: {
-          '@backstage/core': '^1.0.5',
+      packages: {
+        a: {
+          'package.json': JSON.stringify({
+            name: 'a',
+            dependencies: {
+              '@backstage/core': '^1.0.5',
+            },
+          }),
         },
-      }),
-      '/packages/b/package.json': JSON.stringify({
-        name: 'b',
-        dependencies: {
-          '@backstage/core': '^1.0.3',
-          '@backstage/theme': '^1.0.0',
+        b: {
+          'package.json': JSON.stringify({
+            name: 'b',
+            dependencies: {
+              '@backstage/core': '^1.0.3',
+              '@backstage/theme': '^1.0.0',
+            },
+          }),
         },
-      }),
+      },
     });
 
-    jest
-      .spyOn(paths, 'resolveTargetRoot')
-      .mockImplementation((...path) => resolvePath('/', ...path));
     jest.spyOn(runObj, 'run').mockResolvedValue(undefined);
     worker.use(
       rest.get(
@@ -174,10 +200,10 @@ describe('bump', () => {
           ),
       ),
     );
-    const { log: logs } = await withLogCollector(['log'], async () => {
+    const { log: logs } = await withLogCollector(['log', 'warn'], async () => {
       await bump({ pattern: null, release: 'main' } as unknown as Command);
     });
-    expect(logs.filter(Boolean)).toEqual([
+    expectLogsToMatch(logs, [
       'Using default pattern glob @backstage/*',
       'Checking for updates of @backstage/core',
       'Checking for updates of @backstage/theme',
@@ -190,6 +216,7 @@ describe('bump', () => {
       'bumping @backstage/core in b to ^1.0.6',
       'bumping @backstage/theme in b to ^2.0.0',
       'Running yarn install to install new versions',
+      'Checking for moved packages to the @backstage-community namespace...',
       '⚠️  The following packages may have breaking changes:',
       '  @backstage/theme : 1.0.0 ~> 2.0.0',
       '    https://github.com/backstage/backstage/blob/master/packages/theme/CHANGELOG.md',
@@ -208,17 +235,24 @@ describe('bump', () => {
       expect.any(Object),
     );
 
-    const lockfileContents = await fs.readFile('/yarn.lock', 'utf8');
+    const lockfileContents = await fs.readFile(
+      mockDir.resolve('yarn.lock'),
+      'utf8',
+    );
     expect(lockfileContents).toBe(lockfileMockResult);
 
-    const packageA = await fs.readJson('/packages/a/package.json');
+    const packageA = await fs.readJson(
+      mockDir.resolve('packages/a/package.json'),
+    );
     expect(packageA).toEqual({
       name: 'a',
       dependencies: {
         '@backstage/core': '^1.0.6',
       },
     });
-    const packageB = await fs.readJson('/packages/b/package.json');
+    const packageB = await fs.readJson(
+      mockDir.resolve('packages/b/package.json'),
+    );
     expect(packageB).toEqual({
       name: 'b',
       dependencies: {
@@ -229,31 +263,34 @@ describe('bump', () => {
   });
 
   it('should bump backstage dependencies but not install them', async () => {
-    mockFs({
-      '/yarn.lock': lockfileMock,
-      '/package.json': JSON.stringify({
+    mockDir.setContent({
+      'yarn.lock': lockfileMock,
+      'package.json': JSON.stringify({
         workspaces: {
           packages: ['packages/*'],
         },
       }),
-      '/packages/a/package.json': JSON.stringify({
-        name: 'a',
-        dependencies: {
-          '@backstage/core': '^1.0.5',
+      packages: {
+        a: {
+          'package.json': JSON.stringify({
+            name: 'a',
+            dependencies: {
+              '@backstage/core': '^1.0.5',
+            },
+          }),
         },
-      }),
-      '/packages/b/package.json': JSON.stringify({
-        name: 'b',
-        dependencies: {
-          '@backstage/core': '^1.0.3',
-          '@backstage/theme': '^1.0.0',
+        b: {
+          'package.json': JSON.stringify({
+            name: 'b',
+            dependencies: {
+              '@backstage/core': '^1.0.3',
+              '@backstage/theme': '^1.0.0',
+            },
+          }),
         },
-      }),
+      },
     });
 
-    jest
-      .spyOn(paths, 'resolveTargetRoot')
-      .mockImplementation((...path) => resolvePath('/', ...path));
     jest.spyOn(runObj, 'run').mockResolvedValue(undefined);
     worker.use(
       rest.get(
@@ -267,14 +304,14 @@ describe('bump', () => {
           ),
       ),
     );
-    const { log: logs } = await withLogCollector(['log'], async () => {
+    const { log: logs } = await withLogCollector(['log', 'warn'], async () => {
       await bump({
         pattern: null,
         release: 'main',
         skipInstall: true,
       } as unknown as Command);
     });
-    expect(logs.filter(Boolean)).toEqual([
+    expectLogsToMatch(logs, [
       'Using default pattern glob @backstage/*',
       'Checking for updates of @backstage/core',
       'Checking for updates of @backstage/theme',
@@ -287,6 +324,7 @@ describe('bump', () => {
       'bumping @backstage/core in b to ^1.0.6',
       'bumping @backstage/theme in b to ^2.0.0',
       'Skipping yarn install',
+      'Checking for moved packages to the @backstage-community namespace...',
       '⚠️  The following packages may have breaking changes:',
       '  @backstage/theme : 1.0.0 ~> 2.0.0',
       '    https://github.com/backstage/backstage/blob/master/packages/theme/CHANGELOG.md',
@@ -304,17 +342,24 @@ describe('bump', () => {
       expect.any(Object),
     );
 
-    const lockfileContents = await fs.readFile('/yarn.lock', 'utf8');
+    const lockfileContents = await fs.readFile(
+      mockDir.resolve('yarn.lock'),
+      'utf8',
+    );
     expect(lockfileContents).toBe(lockfileMockResult);
 
-    const packageA = await fs.readJson('/packages/a/package.json');
+    const packageA = await fs.readJson(
+      mockDir.resolve('packages/a/package.json'),
+    );
     expect(packageA).toEqual({
       name: 'a',
       dependencies: {
         '@backstage/core': '^1.0.6',
       },
     });
-    const packageB = await fs.readJson('/packages/b/package.json');
+    const packageB = await fs.readJson(
+      mockDir.resolve('packages/b/package.json'),
+    );
     expect(packageB).toEqual({
       name: 'b',
       dependencies: {
@@ -325,31 +370,34 @@ describe('bump', () => {
   });
 
   it('should prefer dependency versions from release manifest', async () => {
-    mockFs({
-      '/yarn.lock': lockfileMock,
-      '/package.json': JSON.stringify({
+    mockDir.setContent({
+      'yarn.lock': lockfileMock,
+      'package.json': JSON.stringify({
         workspaces: {
           packages: ['packages/*'],
         },
       }),
-      '/packages/a/package.json': JSON.stringify({
-        name: 'a',
-        dependencies: {
-          '@backstage/core': '^1.0.5',
+      packages: {
+        a: {
+          'package.json': JSON.stringify({
+            name: 'a',
+            dependencies: {
+              '@backstage/core': '^1.0.5',
+            },
+          }),
         },
-      }),
-      '/packages/b/package.json': JSON.stringify({
-        name: 'b',
-        dependencies: {
-          '@backstage/core': '^1.0.3',
-          '@backstage/theme': '^1.0.0',
+        b: {
+          'package.json': JSON.stringify({
+            name: 'b',
+            dependencies: {
+              '@backstage/core': '^1.0.3',
+              '@backstage/theme': '^1.0.0',
+            },
+          }),
         },
-      }),
+      },
     });
 
-    jest
-      .spyOn(paths, 'resolveTargetRoot')
-      .mockImplementation((...path) => resolvePath('/', ...path));
     jest.spyOn(runObj, 'run').mockResolvedValue(undefined);
     worker.use(
       rest.get(
@@ -373,10 +421,10 @@ describe('bump', () => {
           ),
       ),
     );
-    const { log: logs } = await withLogCollector(['log'], async () => {
+    const { log: logs } = await withLogCollector(['log', 'warn'], async () => {
       await bump({ pattern: null, release: 'main' } as unknown as Command);
     });
-    expect(logs.filter(Boolean)).toEqual([
+    expectLogsToMatch(logs, [
       'Using default pattern glob @backstage/*',
       'Checking for updates of @backstage/core',
       'Checking for updates of @backstage/theme',
@@ -391,6 +439,7 @@ describe('bump', () => {
       'bumping @backstage/core in a to ^1.0.6',
       'Your project is now at version 0.0.1, which has been written to backstage.json',
       'Running yarn install to install new versions',
+      'Checking for moved packages to the @backstage-community namespace...',
       '⚠️  The following packages may have breaking changes:',
       '  @backstage/theme : 1.0.0 ~> 5.0.0',
       '    https://github.com/backstage/backstage/blob/master/packages/theme/CHANGELOG.md',
@@ -408,17 +457,24 @@ describe('bump', () => {
       expect.any(Object),
     );
 
-    const lockfileContents = await fs.readFile('/yarn.lock', 'utf8');
+    const lockfileContents = await fs.readFile(
+      mockDir.resolve('yarn.lock'),
+      'utf8',
+    );
     expect(lockfileContents).toBe(lockfileMockResult);
 
-    const packageA = await fs.readJson('/packages/a/package.json');
+    const packageA = await fs.readJson(
+      mockDir.resolve('packages/a/package.json'),
+    );
     expect(packageA).toEqual({
       name: 'a',
       dependencies: {
         '@backstage/core': '^1.0.6',
       },
     });
-    const packageB = await fs.readJson('/packages/b/package.json');
+    const packageB = await fs.readJson(
+      mockDir.resolve('packages/b/package.json'),
+    );
     expect(packageB).toEqual({
       name: 'b',
       dependencies: {
@@ -429,30 +485,33 @@ describe('bump', () => {
   });
 
   it('should only bump packages in the manifest when a specific release is specified', async () => {
-    mockFs({
-      '/yarn.lock': lockfileMock,
-      '/package.json': JSON.stringify({
+    mockDir.setContent({
+      'yarn.lock': lockfileMock,
+      'package.json': JSON.stringify({
         workspaces: {
           packages: ['packages/*'],
         },
       }),
-      '/packages/a/package.json': JSON.stringify({
-        name: 'a',
-        dependencies: {
-          '@backstage/core': '^1.0.5',
+      packages: {
+        a: {
+          'package.json': JSON.stringify({
+            name: 'a',
+            dependencies: {
+              '@backstage/core': '^1.0.5',
+            },
+          }),
         },
-      }),
-      '/packages/b/package.json': JSON.stringify({
-        name: 'b',
-        dependencies: {
-          '@backstage/core': '^1.0.3',
-          '@backstage/theme': '^1.0.0',
+        b: {
+          'package.json': JSON.stringify({
+            name: 'b',
+            dependencies: {
+              '@backstage/core': '^1.0.3',
+              '@backstage/theme': '^1.0.0',
+            },
+          }),
         },
-      }),
+      },
     });
-    jest
-      .spyOn(paths, 'resolveTargetRoot')
-      .mockImplementation((...path) => resolvePath('/', ...path));
 
     jest.spyOn(runObj, 'run').mockResolvedValue(undefined);
     worker.use(
@@ -461,7 +520,7 @@ describe('bump', () => {
         (_, res, ctx) => res(ctx.status(404), ctx.json({})),
       ),
     );
-    const { log: logs } = await withLogCollector(['log'], async () => {
+    const { log: logs } = await withLogCollector(['log', 'warn'], async () => {
       await expect(
         bump({ pattern: null, release: '999.0.1' } as unknown as Command),
       ).rejects.toThrow('No release found for 999.0.1 version');
@@ -472,14 +531,18 @@ describe('bump', () => {
 
     expect(runObj.run).toHaveBeenCalledTimes(0);
 
-    const packageA = await fs.readJson('/packages/a/package.json');
+    const packageA = await fs.readJson(
+      mockDir.resolve('packages/a/package.json'),
+    );
     expect(packageA).toEqual({
       name: 'a',
       dependencies: {
         '@backstage/core': '^1.0.5',
       },
     });
-    const packageB = await fs.readJson('/packages/b/package.json');
+    const packageB = await fs.readJson(
+      mockDir.resolve('packages/b/package.json'),
+    );
     expect(packageB).toEqual({
       name: 'b',
       dependencies: {
@@ -489,32 +552,36 @@ describe('bump', () => {
     });
   });
 
+  // eslint-disable-next-line jest/expect-expect
   it('should prefer versions from the highest manifest version when main is not specified', async () => {
-    mockFs({
-      '/yarn.lock': lockfileMock,
-      '/package.json': JSON.stringify({
+    mockDir.setContent({
+      'yarn.lock': lockfileMock,
+      'package.json': JSON.stringify({
         workspaces: {
           packages: ['packages/*'],
         },
       }),
-      '/packages/a/package.json': JSON.stringify({
-        name: 'a',
-        dependencies: {
-          '@backstage/core': '^1.0.5',
+      packages: {
+        a: {
+          'package.json': JSON.stringify({
+            name: 'a',
+            dependencies: {
+              '@backstage/core': '^1.0.5',
+            },
+          }),
         },
-      }),
-      '/packages/b/package.json': JSON.stringify({
-        name: 'b',
-        dependencies: {
-          '@backstage/core': '^1.0.3',
-          '@backstage/theme': '^1.0.0',
+        b: {
+          'package.json': JSON.stringify({
+            name: 'b',
+            dependencies: {
+              '@backstage/core': '^1.0.3',
+              '@backstage/theme': '^1.0.0',
+            },
+          }),
         },
-      }),
+      },
     });
 
-    jest
-      .spyOn(paths, 'resolveTargetRoot')
-      .mockImplementation((...path) => resolvePath('/', ...path));
     jest.spyOn(runObj, 'run').mockResolvedValue(undefined);
     worker.use(
       rest.get(
@@ -558,10 +625,10 @@ describe('bump', () => {
           ),
       ),
     );
-    const { log: logs } = await withLogCollector(['log'], async () => {
+    const { log: logs } = await withLogCollector(['log', 'warn'], async () => {
       await bump({ pattern: null, release: 'next' } as unknown as Command);
     });
-    expect(logs.filter(Boolean)).toEqual([
+    expectLogsToMatch(logs, [
       'Using default pattern glob @backstage/*',
       'Checking for updates of @backstage/core',
       'Checking for updates of @backstage/theme',
@@ -576,6 +643,7 @@ describe('bump', () => {
       'bumping @backstage/core in a to ^1.0.6',
       'Your project is now at version 1.0.0, which has been written to backstage.json',
       'Running yarn install to install new versions',
+      'Checking for moved packages to the @backstage-community namespace...',
       '⚠️  The following packages may have breaking changes:',
       '  @backstage/theme : 1.0.0 ~> 5.0.0',
       '    https://github.com/backstage/backstage/blob/master/packages/theme/CHANGELOG.md',
@@ -609,35 +677,38 @@ describe('bump', () => {
 "@backstage/theme@^1.0.0":
   version "1.0.0"
 `;
-    mockFs({
-      '/yarn.lock': customLockfileMock,
-      '/package.json': JSON.stringify({
+    mockDir.setContent({
+      'yarn.lock': customLockfileMock,
+      'package.json': JSON.stringify({
         workspaces: {
           packages: ['packages/*'],
         },
       }),
-      '/packages/a/package.json': JSON.stringify({
-        name: 'a',
-        dependencies: {
-          '@backstage/core': '^1.0.5',
-          '@backstage-extra/custom': '^1.0.1',
-          '@backstage-extra/custom-two': '^1.0.0',
+      packages: {
+        a: {
+          'package.json': JSON.stringify({
+            name: 'a',
+            dependencies: {
+              '@backstage/core': '^1.0.5',
+              '@backstage-extra/custom': '^1.0.1',
+              '@backstage-extra/custom-two': '^1.0.0',
+            },
+          }),
         },
-      }),
-      '/packages/b/package.json': JSON.stringify({
-        name: 'b',
-        dependencies: {
-          '@backstage/core': '^1.0.3',
-          '@backstage/theme': '^1.0.0',
-          '@backstage-extra/custom': '^1.1.0',
-          '@backstage-extra/custom-two': '^1.0.0',
+        b: {
+          'package.json': JSON.stringify({
+            name: 'b',
+            dependencies: {
+              '@backstage/core': '^1.0.3',
+              '@backstage/theme': '^1.0.0',
+              '@backstage-extra/custom': '^1.1.0',
+              '@backstage-extra/custom-two': '^1.0.0',
+            },
+          }),
         },
-      }),
+      },
     });
 
-    jest
-      .spyOn(paths, 'resolveTargetRoot')
-      .mockImplementation((...path) => resolvePath('/', ...path));
     jest.spyOn(runObj, 'run').mockResolvedValue(undefined);
     worker.use(
       rest.get(
@@ -651,13 +722,13 @@ describe('bump', () => {
           ),
       ),
     );
-    const { log: logs } = await withLogCollector(['log'], async () => {
+    const { log: logs } = await withLogCollector(['log', 'warn'], async () => {
       await bump({
         pattern: '@{backstage,backstage-extra}/*',
         release: 'main',
       } as any);
     });
-    expect(logs.filter(Boolean)).toEqual([
+    expectLogsToMatch(logs, [
       'Using custom pattern glob @{backstage,backstage-extra}/*',
       'Checking for updates of @backstage/core',
       'Checking for updates of @backstage-extra/custom',
@@ -678,6 +749,7 @@ describe('bump', () => {
       'bumping @backstage/theme in b to ^2.0.0',
       'Skipping backstage.json update as custom pattern is used',
       'Running yarn install to install new versions',
+      'Checking for moved packages to the @backstage-community namespace...',
       '⚠️  The following packages may have breaking changes:',
       '  @backstage-extra/custom-two : 1.0.0 ~> 2.0.0',
       '  @backstage/theme : 1.0.0 ~> 2.0.0',
@@ -696,10 +768,15 @@ describe('bump', () => {
       expect.any(Object),
     );
 
-    const lockfileContents = await fs.readFile('/yarn.lock', 'utf8');
+    const lockfileContents = await fs.readFile(
+      mockDir.resolve('yarn.lock'),
+      'utf8',
+    );
     expect(lockfileContents).toEqual(customLockfileMockResult);
 
-    const packageA = await fs.readJson('/packages/a/package.json');
+    const packageA = await fs.readJson(
+      mockDir.resolve('packages/a/package.json'),
+    );
     expect(packageA).toEqual({
       name: 'a',
       dependencies: {
@@ -708,7 +785,9 @@ describe('bump', () => {
         '@backstage/core': '^1.0.6',
       },
     });
-    const packageB = await fs.readJson('/packages/b/package.json');
+    const packageB = await fs.readJson(
+      mockDir.resolve('packages/b/package.json'),
+    );
     expect(packageB).toEqual({
       name: 'b',
       dependencies: {
@@ -721,31 +800,34 @@ describe('bump', () => {
   });
 
   it('should ignore not found packages', async () => {
-    mockFs({
-      '/yarn.lock': lockfileMockResult,
-      '/package.json': JSON.stringify({
+    mockDir.setContent({
+      'yarn.lock': lockfileMockResult,
+      'package.json': JSON.stringify({
         workspaces: {
           packages: ['packages/*'],
         },
       }),
-      '/packages/a/package.json': JSON.stringify({
-        name: 'a',
-        dependencies: {
-          '@backstage/core': '^1.0.5',
+      packages: {
+        a: {
+          'package.json': JSON.stringify({
+            name: 'a',
+            dependencies: {
+              '@backstage/core': '^1.0.5',
+            },
+          }),
         },
-      }),
-      '/packages/b/package.json': JSON.stringify({
-        name: 'b',
-        dependencies: {
-          '@backstage/core': '^1.0.3',
-          '@backstage/theme': '^2.0.0',
+        b: {
+          'package.json': JSON.stringify({
+            name: 'b',
+            dependencies: {
+              '@backstage/core': '^1.0.3',
+              '@backstage/theme': '^2.0.0',
+            },
+          }),
         },
-      }),
+      },
     });
 
-    jest
-      .spyOn(paths, 'resolveTargetRoot')
-      .mockImplementation((...path) => resolvePath('/', ...path));
     mockFetchPackageInfo.mockRejectedValue(new NotFoundError('Nope'));
     jest.spyOn(runObj, 'run').mockResolvedValue(undefined);
     worker.use(
@@ -760,10 +842,10 @@ describe('bump', () => {
           ),
       ),
     );
-    const { log: logs } = await withLogCollector(['log'], async () => {
+    const { log: logs } = await withLogCollector(['log', 'warn'], async () => {
       await bump({ pattern: null, release: 'main' } as unknown as Command);
     });
-    expect(logs.filter(Boolean)).toEqual([
+    expectLogsToMatch(logs, [
       'Using default pattern glob @backstage/*',
       'Checking for updates of @backstage/core',
       'Checking for updates of @backstage/theme',
@@ -778,17 +860,24 @@ describe('bump', () => {
 
     expect(runObj.run).toHaveBeenCalledTimes(0);
 
-    const lockfileContents = await fs.readFile('/yarn.lock', 'utf8');
+    const lockfileContents = await fs.readFile(
+      mockDir.resolve('yarn.lock'),
+      'utf8',
+    );
     expect(lockfileContents).toBe(lockfileMockResult);
 
-    const packageA = await fs.readJson('/packages/a/package.json');
+    const packageA = await fs.readJson(
+      mockDir.resolve('packages/a/package.json'),
+    );
     expect(packageA).toEqual({
       name: 'a',
       dependencies: {
         '@backstage/core': '^1.0.5', // not bumped
       },
     });
-    const packageB = await fs.readJson('/packages/b/package.json');
+    const packageB = await fs.readJson(
+      mockDir.resolve('packages/b/package.json'),
+    );
     expect(packageB).toEqual({
       name: 'b',
       dependencies: {
@@ -798,59 +887,43 @@ describe('bump', () => {
     });
   });
 
+  // eslint-disable-next-line jest/expect-expect
   it('should log duplicates', async () => {
     jest.spyOn(Lockfile.prototype, 'analyze').mockReturnValue({
       invalidRanges: [],
       newVersions: [],
       newRanges: [
         {
-          name: 'first-duplicate',
-          oldRange: 'first-duplicate',
-          newRange: 'first-duplicate',
-          oldVersion: '1.0.0',
-          newVersion: '2.0.0',
-        },
-        {
-          name: 'second-duplicate',
-          oldRange: 'second-duplicate',
-          newRange: 'second-duplicate',
-          oldVersion: '1.0.0',
-          newVersion: '2.0.0',
-        },
-        {
-          name: 'third-duplicate',
-          oldRange: 'third-duplicate',
-          newRange: 'third-duplicate',
+          name: '@backstage/backend-app-api',
+          oldRange: '^1.0.0',
+          newRange: '^2.0.0',
           oldVersion: '1.0.0',
           newVersion: '2.0.0',
         },
       ],
     });
-    mockFs({
-      '/yarn.lock': lockfileMock,
-      '/package.json': JSON.stringify({
+    mockDir.setContent({
+      'yarn.lock': `${HEADER}
+"@backstage/backend-app-api@^1.0.0":
+  version "1.0.0"
+`,
+      'package.json': JSON.stringify({
         workspaces: {
           packages: ['packages/*'],
         },
       }),
-      '/packages/a/package.json': JSON.stringify({
-        name: 'a',
-        dependencies: {
-          '@backstage/core': '^1.0.5',
+      packages: {
+        a: {
+          'package.json': JSON.stringify({
+            name: 'a',
+            dependencies: {
+              '@backstage/backend-app-api': '^1.0.0',
+            },
+          }),
         },
-      }),
-      '/packages/b/package.json': JSON.stringify({
-        name: 'b',
-        dependencies: {
-          '@backstage/core': '^1.0.3',
-          '@backstage/theme': '^1.0.0',
-        },
-      }),
+      },
     });
 
-    jest
-      .spyOn(paths, 'resolveTargetRoot')
-      .mockImplementation((...path) => resolvePath('/', ...path));
     jest.spyOn(runObj, 'run').mockResolvedValue(undefined);
     worker.use(
       rest.get(
@@ -859,56 +932,57 @@ describe('bump', () => {
           res(
             ctx.status(200),
             ctx.json({
-              packages: [],
+              packages: [
+                {
+                  name: '@backstage/backend-app-api',
+                  version: '2.0.0',
+                },
+              ],
             }),
           ),
       ),
     );
-    const { log: logs } = await withLogCollector(['log'], async () => {
+    const { log: logs } = await withLogCollector(['log', 'warn'], async () => {
       await bump({ pattern: null, release: 'main' } as unknown as Command);
     });
-    expect(logs.filter(Boolean)).toEqual([
+    expectLogsToMatch(logs, [
       'Using default pattern glob @backstage/*',
-      'Checking for updates of @backstage/core',
-      'Checking for updates of @backstage/theme',
-      'Checking for updates of @backstage/core-api',
+      'Checking for updates of @backstage/backend-app-api',
+      'Checking for updates of @backstage/backend-app-api',
       'Some packages are outdated, updating',
-      'unlocking @backstage/core@^1.0.3 ~> 1.0.6',
-      'unlocking @backstage/core-api@^1.0.6 ~> 1.0.7',
-      'unlocking @backstage/core-api@^1.0.3 ~> 1.0.7',
-      'bumping @backstage/core in a to ^1.0.6',
-      'bumping @backstage/core in b to ^1.0.6',
-      'bumping @backstage/theme in b to ^2.0.0',
+      'bumping @backstage/backend-app-api in a to ^2.0.0',
       'Running yarn install to install new versions',
+      'Checking for moved packages to the @backstage-community namespace...',
       '⚠️  The following packages may have breaking changes:',
-      '  @backstage/theme : 1.0.0 ~> 2.0.0',
-      '    https://github.com/backstage/backstage/blob/master/packages/theme/CHANGELOG.md',
+      '  @backstage/backend-app-api : 1.0.0 ~> 2.0.0',
+      '    https://github.com/backstage/backstage/blob/master/packages/backend-app-api/CHANGELOG.md',
       'Version bump complete!',
-      'The following packages have duplicates but have been allowed:',
-      'first-duplicate, second-duplicate, third-duplicate',
+      '  ⚠️ Warning! ⚠️',
+      '  The below package(s) have incompatible duplicate installations, likely due to a bad dependency in a plugin.',
+      '  You can investigate this by running `yarn why <package-name>`, and report the issue to the plugin maintainers.',
+      '    @backstage/backend-app-api',
     ]);
   });
 });
 
 describe('bumpBackstageJsonVersion', () => {
+  mockDir = createMockDirectory();
+
   afterEach(() => {
-    mockFs.restore();
     jest.resetAllMocks();
   });
 
   it('should bump version in backstage.json', async () => {
-    mockFs({
-      '/backstage.json': JSON.stringify({ version: '0.0.1' }),
+    mockDir.setContent({
+      'backstage.json': JSON.stringify({ version: '0.0.1' }),
     });
-    paths.targetDir = '/';
-    jest
-      .spyOn(paths, 'resolveTargetRoot')
-      .mockImplementation((...path) => resolvePath('/', ...path));
 
     const { log } = await withLogCollector(async () => {
       await bumpBackstageJsonVersion('1.4.1');
     });
-    expect(await fs.readJson('/backstage.json')).toEqual({ version: '1.4.1' });
+    expect(await fs.readJson(mockDir.resolve('backstage.json'))).toEqual({
+      version: '1.4.1',
+    });
     expect(log).toEqual([
       'Upgraded from release 0.0.1 to 1.4.1, please review these template changes:',
       undefined,
@@ -918,17 +992,15 @@ describe('bumpBackstageJsonVersion', () => {
   });
 
   it("should create backstage.json if doesn't exist", async () => {
-    mockFs({});
-    paths.targetDir = '/';
+    mockDir.clear(); // empty temp test folder
     const latest = '1.4.1';
-    jest
-      .spyOn(paths, 'resolveTargetRoot')
-      .mockImplementation((...path) => resolvePath('/', ...path));
 
     const { log } = await withLogCollector(async () => {
       await bumpBackstageJsonVersion(latest);
     });
-    expect(await fs.readJson('/backstage.json')).toEqual({ version: latest });
+    expect(await fs.readJson(mockDir.resolve('backstage.json'))).toEqual({
+      version: latest,
+    });
     expect(log).toEqual([
       'Your project is now at version 1.4.1, which has been written to backstage.json',
     ]);

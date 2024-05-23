@@ -14,13 +14,16 @@
  * limitations under the License.
  */
 
-import { HostDiscovery } from '@backstage/backend-common';
 import {
   coreServices,
   createServiceFactory,
 } from '@backstage/backend-plugin-api';
+import { HostDiscovery } from './HostDiscovery';
 
-/** @public */
+/**
+ * @public
+ * @deprecated Please import from `@backstage/backend-defaults/discovery` instead.
+ */
 export const discoveryServiceFactory = createServiceFactory({
   service: coreServices.discovery,
   deps: {

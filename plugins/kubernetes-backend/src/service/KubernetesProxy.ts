@@ -20,20 +20,36 @@ import {
   NotFoundError,
   serializeError,
 } from '@backstage/errors';
-import { getBearerTokenFromAuthorizationHeader } from '@backstage/plugin-auth-node';
-import { kubernetesProxyPermission } from '@backstage/plugin-kubernetes-common';
 import {
-  AuthorizeResult,
-  PermissionEvaluator,
-} from '@backstage/plugin-permission-common';
-import { bufferFromFileOrString } from '@kubernetes/client-node';
+  ANNOTATION_KUBERNETES_AUTH_PROVIDER,
+  kubernetesProxyPermission,
+  KubernetesRequestAuth,
+} from '@backstage/plugin-kubernetes-common';
+import { AuthorizeResult } from '@backstage/plugin-permission-common';
+import {
+  bufferFromFileOrString,
+  Cluster,
+  Config,
+  KubeConfig,
+} from '@kubernetes/client-node';
 import { createProxyMiddleware, RequestHandler } from 'http-proxy-middleware';
-import { Logger } from 'winston';
+import fs from 'fs-extra';
 
 import { AuthenticationStrategy } from '../auth';
 import { ClusterDetails, KubernetesClustersSupplier } from '../types/types';
 
 import type { Request } from 'express';
+import { IncomingHttpHeaders } from 'http';
+import {
+  DiscoveryService,
+  HttpAuthService,
+  LoggerService,
+  PermissionsService,
+} from '@backstage/backend-plugin-api';
+import {
+  createLegacyAuthAdapters,
+  loggerToWinstonLogger,
+} from '@backstage/backend-common';
 
 export const APPLICATION_JSON: string = 'application/json';
 
@@ -58,7 +74,7 @@ export const HEADER_KUBERNETES_AUTH: string =
  * @public
  */
 export type KubernetesProxyCreateRequestHandlerOptions = {
-  permissionApi: PermissionEvaluator;
+  permissionApi: PermissionsService;
 };
 
 /**
@@ -67,9 +83,11 @@ export type KubernetesProxyCreateRequestHandlerOptions = {
  * @public
  */
 export type KubernetesProxyOptions = {
-  logger: Logger;
+  logger: LoggerService;
   clusterSupplier: KubernetesClustersSupplier;
   authStrategy: AuthenticationStrategy;
+  discovery: DiscoveryService;
+  httpAuth?: HttpAuthService;
 };
 
 /**
@@ -79,14 +97,22 @@ export type KubernetesProxyOptions = {
  */
 export class KubernetesProxy {
   private readonly middlewareForClusterName = new Map<string, RequestHandler>();
-  private readonly logger: Logger;
+  private readonly logger: LoggerService;
   private readonly clusterSupplier: KubernetesClustersSupplier;
   private readonly authStrategy: AuthenticationStrategy;
+  private readonly httpAuth: HttpAuthService;
 
   constructor(options: KubernetesProxyOptions) {
     this.logger = options.logger;
     this.clusterSupplier = options.clusterSupplier;
     this.authStrategy = options.authStrategy;
+
+    const legacy = createLegacyAuthAdapters({
+      discovery: options.discovery,
+      httpAuth: options.httpAuth,
+    });
+
+    this.httpAuth = legacy.httpAuth;
   }
 
   public createRequestHandler(
@@ -97,9 +123,7 @@ export class KubernetesProxy {
       const authorizeResponse = await permissionApi.authorize(
         [{ permission: kubernetesProxyPermission }],
         {
-          token: getBearerTokenFromAuthorizationHeader(
-            req.header('authorization'),
-          ),
+          credentials: await this.httpAuth.credentials(req),
         },
       );
       const auth = authorizeResponse[0];
@@ -107,18 +131,6 @@ export class KubernetesProxy {
       if (auth.result === AuthorizeResult.DENY) {
         res.status(403).json({ error: new NotAllowedError('Unauthorized') });
         return;
-      }
-
-      const authHeader = req.header(HEADER_KUBERNETES_AUTH);
-      if (authHeader) {
-        req.headers.authorization = authHeader;
-      } else {
-        const credential = await this.getClusterForRequest(req).then(cd => {
-          return this.authStrategy.getCredential(cd, {});
-        });
-        if (credential.type === 'bearer token') {
-          req.headers.authorization = `Bearer ${credential.token}`;
-        }
       }
 
       const middleware = await this.getMiddleware(req);
@@ -145,7 +157,8 @@ export class KubernetesProxy {
     if (!middleware) {
       const logger = this.logger.child({ cluster: originalCluster.name });
       middleware = createProxyMiddleware({
-        logProvider: () => logger,
+        // TODO: Add 'log' to LoggerService
+        logProvider: () => loggerToWinstonLogger(logger),
         ws: true,
         secure: !originalCluster.skipTLSVerify,
         changeOrigin: true,
@@ -163,7 +176,7 @@ export class KubernetesProxy {
           const cluster = await this.getClusterForRequest(req);
           const url = new URL(cluster.url);
 
-          return {
+          const target: any = {
             protocol: url.protocol,
             host: url.hostname,
             port: url.port,
@@ -172,6 +185,30 @@ export class KubernetesProxy {
               cluster.caData,
             )?.toString(),
           };
+
+          const authHeader =
+            req.headers[HEADER_KUBERNETES_AUTH.toLocaleLowerCase('en-US')];
+          if (typeof authHeader === 'string') {
+            req.headers.authorization = authHeader;
+          } else {
+            // Map Backstage-Kubernetes-Authorization-X-X headers to a KubernetesRequestAuth object
+            const authObj = KubernetesProxy.authHeadersToKubernetesRequestAuth(
+              req.headers,
+            );
+
+            const credential = await this.getClusterForRequest(req).then(cd => {
+              return this.authStrategy.getCredential(cd, authObj);
+            });
+
+            if (credential.type === 'bearer token') {
+              req.headers.authorization = `Bearer ${credential.token}`;
+            } else if (credential.type === 'x509 client certificate') {
+              target.key = credential.key;
+              target.cert = credential.cert;
+            }
+          }
+
+          return target;
         },
         onError: (error, req, res) => {
           const wrappedError = new ForwardedError(
@@ -179,7 +216,7 @@ export class KubernetesProxy {
             error,
           );
 
-          logger.error(wrappedError);
+          logger.error('Kubernetes proxy error', wrappedError);
 
           const body: ErrorResponseBody = {
             error: serializeError(wrappedError, {
@@ -198,7 +235,9 @@ export class KubernetesProxy {
 
   private async getClusterForRequest(req: Request): Promise<ClusterDetails> {
     const clusterName = req.headers[HEADER_KUBERNETES_CLUSTER.toLowerCase()];
-    const clusters = await this.clusterSupplier.getClusters();
+    const clusters = await this.clusterSupplier.getClusters({
+      credentials: await this.httpAuth.credentials(req),
+    });
 
     if (!clusters || clusters.length <= 0) {
       throw new NotFoundError(`No Clusters configured`);
@@ -219,6 +258,73 @@ export class KubernetesProxy {
       throw new NotFoundError(`Cluster '${clusterName}' not found`);
     }
 
+    const authProvider =
+      cluster.authMetadata[ANNOTATION_KUBERNETES_AUTH_PROVIDER];
+
+    if (
+      authProvider === 'serviceAccount' &&
+      fs.pathExistsSync(Config.SERVICEACCOUNT_CA_PATH) &&
+      !cluster.authMetadata.serviceAccountToken
+    ) {
+      const kc = new KubeConfig();
+      kc.loadFromCluster();
+      const clusterFromKubeConfig = kc.getCurrentCluster() as Cluster;
+
+      const url = new URL(clusterFromKubeConfig.server);
+      cluster.url = clusterFromKubeConfig.server;
+      if (url.protocol === 'https:') {
+        cluster.caFile = clusterFromKubeConfig.caFile;
+      }
+    }
+
     return cluster;
+  }
+
+  private static authHeadersToKubernetesRequestAuth(
+    originalHeaders: IncomingHttpHeaders,
+  ): KubernetesRequestAuth {
+    return Object.keys(originalHeaders)
+      .filter(header => header.startsWith('backstage-kubernetes-authorization'))
+      .map(header =>
+        KubernetesProxy.headerToDictionary(header, originalHeaders),
+      )
+      .filter(headerAsDic => Object.keys(headerAsDic).length !== 0)
+      .reduce(KubernetesProxy.combineHeaders, {});
+  }
+
+  private static headerToDictionary(
+    header: string,
+    originalHeaders: IncomingHttpHeaders,
+  ): KubernetesRequestAuth {
+    const obj: KubernetesRequestAuth = {};
+    const headerSplitted = header.split('-');
+    if (headerSplitted.length >= 4) {
+      const framework = headerSplitted[3].toLowerCase();
+      if (headerSplitted.length >= 5) {
+        const provider = headerSplitted.slice(4).join('-').toLowerCase();
+        obj[framework] = { [provider]: originalHeaders[header] };
+      } else {
+        obj[framework] = originalHeaders[header];
+      }
+    }
+    return obj;
+  }
+
+  private static combineHeaders(
+    authObj: any,
+    header: any,
+  ): KubernetesRequestAuth {
+    const framework = Object.keys(header)[0];
+
+    if (authObj[framework]) {
+      authObj[framework] = {
+        ...authObj[framework],
+        ...header[framework],
+      };
+    } else {
+      authObj[framework] = header[framework];
+    }
+
+    return authObj;
   }
 }

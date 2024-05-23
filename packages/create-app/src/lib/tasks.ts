@@ -25,6 +25,7 @@ import {
   resolve as resolvePath,
   relative as relativePath,
 } from 'path';
+import fetch from 'node-fetch';
 import { exec as execCb } from 'child_process';
 import { packageVersions } from './versions';
 import { promisify } from 'util';
@@ -179,22 +180,6 @@ export async function checkPathExistsTask(path: string) {
 }
 
 /**
- * Create a folder to store templated files
- *
- * @param tempDir - target temporary directory
- * @throws if `fs.mkdir` fails
- */
-export async function createTemporaryAppFolderTask(tempDir: string) {
-  await Task.forItem('creating', 'temporary directory', async () => {
-    try {
-      await fs.mkdir(tempDir);
-    } catch (error) {
-      throw new Error(`Failed to create temporary app directory, ${error}`);
-    }
-  });
-}
-
-/**
  * Run `yarn install` and `run tsc` in application directory
  *
  * @param appDir - location of application to build
@@ -317,6 +302,50 @@ export async function tryInitGitRepository(dir: string) {
       throw new Error('Failed to remove .git folder');
     }
 
+    return false;
+  }
+}
+
+/**
+ * This fetches the yarn.lock seed file at https://github.com/backstage/backstage/blob/master/packages/create-app/seed-yarn.lock
+ * Its purpose is to lock individual dependencies with broken releases to known working versions.
+ * This flow is decoupled from the release of the create-app package in order to avoid
+ * the need to re-publish the create-app package whenever we want to update the seed file.
+ *
+ * @returns true if the yarn.lock seed file was fetched successfully
+ */
+export async function fetchYarnLockSeedTask(dir: string) {
+  try {
+    await Task.forItem('fetching', 'yarn.lock seed', async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch(
+        'https://raw.githubusercontent.com/backstage/backstage/master/packages/create-app/seed-yarn.lock',
+        {
+          signal: controller.signal,
+        },
+      );
+      clearTimeout(timeout);
+
+      if (!res.ok) {
+        throw new Error(
+          `Request failed with status ${res.status} ${res.statusText}`,
+        );
+      }
+
+      const initialYarnLockContent = await res.text();
+
+      await fs.writeFile(
+        resolvePath(dir, 'yarn.lock'),
+        initialYarnLockContent
+          .split('\n')
+          .filter(l => !l.startsWith('//'))
+          .join('\n'),
+        'utf8',
+      );
+    });
+    return true;
+  } catch {
     return false;
   }
 }

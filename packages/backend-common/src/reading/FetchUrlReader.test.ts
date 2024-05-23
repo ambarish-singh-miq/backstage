@@ -16,10 +16,12 @@
 
 import { ConfigReader } from '@backstage/config';
 import { NotFoundError, NotModifiedError } from '@backstage/errors';
-import { setupRequestMockHandlers } from '@backstage/backend-test-utils';
+import {
+  mockServices,
+  setupRequestMockHandlers,
+} from '@backstage/backend-test-utils';
 import { rest } from 'msw';
 import { setupServer } from 'msw/node';
-import { getVoidLogger } from '../logging';
 import { FetchUrlReader } from './FetchUrlReader';
 import { DefaultReadTreeResponseFactory } from './tree';
 
@@ -77,7 +79,7 @@ describe('FetchUrlReader', () => {
 
     worker.use(
       rest.get('https://backstage.io/error', (_req, res, ctx) => {
-        return res(ctx.status(500), ctx.body('An internal error occured'));
+        return res(ctx.status(500), ctx.body('An internal error occurred'));
       }),
     );
   });
@@ -105,7 +107,7 @@ describe('FetchUrlReader', () => {
           },
         },
       }),
-      logger: getVoidLogger(),
+      logger: mockServices.logger.mock(),
       treeResponseFactory: DefaultReadTreeResponseFactory.create({
         config: new ConfigReader({}),
       }),
@@ -155,7 +157,7 @@ describe('FetchUrlReader', () => {
             },
           },
         }),
-        logger: getVoidLogger(),
+        logger: mockServices.logger.mock(),
         treeResponseFactory: DefaultReadTreeResponseFactory.create({
           config: new ConfigReader({}),
         }),
@@ -221,6 +223,27 @@ describe('FetchUrlReader', () => {
           lastModifiedAfter: new Date('2020-01-01T00:00:00Z'),
         }),
       ).rejects.toThrow(NotModifiedError);
+    });
+
+    it('should send Authorization header if token is provided', async () => {
+      expect.assertions(1);
+
+      worker.use(
+        rest.get(
+          'https://backstage.io/requires-authentication',
+          (req, res, ctx) => {
+            expect(req.headers.get('authorization')).toBe('Bearer mytoken');
+            return res(ctx.status(200));
+          },
+        ),
+      );
+
+      await fetchUrlReader.readUrl(
+        'https://backstage.io/requires-authentication',
+        {
+          token: 'mytoken',
+        },
+      );
     });
 
     it('should return etag from the response', async () => {

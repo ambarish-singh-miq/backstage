@@ -14,11 +14,14 @@
  * limitations under the License.
  */
 
-import { Config } from '@backstage/config';
-import { PluginEndpointDiscovery } from './types';
-import { readHttpServerOptions } from '@backstage/backend-app-api';
+import { HostDiscovery as _HostDiscovery } from '@backstage/backend-app-api';
+import { DiscoveryService } from '@backstage/backend-plugin-api';
 
-type Target = string | { internal: string; external: string };
+/**
+ * @public
+ * @deprecated Use `DiscoveryService` from `@backstage/backend-plugin-api` instead
+ */
+export type PluginEndpointDiscovery = DiscoveryService;
 
 /**
  * HostDiscovery is a basic PluginEndpointDiscovery implementation
@@ -29,107 +32,9 @@ type Target = string | { internal: string; external: string };
  * resolved to the same host, so there won't be any balancing of internal traffic.
  *
  * @public
+ * @deprecated Please import from `@backstage/backend-defaults/discovery` instead.
  */
-export class HostDiscovery implements PluginEndpointDiscovery {
-  /**
-   * Creates a new HostDiscovery discovery instance by reading
-   * from the `backend` config section, specifically the `.baseUrl` for
-   * discovering the external URL, and the `.listen` and `.https` config
-   * for the internal one.
-   *
-   * Can be overridden in config by providing a target and corresponding plugins in `discovery.endpoints`.
-   * eg.
-   * ```yaml
-   * discovery:
-   *  endpoints:
-   *    - target: https://internal.example.com/internal-catalog
-   *      plugins: [catalog]
-   *    - target: https://internal.example.com/secure/api/{{pluginId}}
-   *      plugins: [auth, permission]
-   *    - target:
-   *        internal: https://internal.example.com/search
-   *        external: https://example.com/search
-   *      plugins: [search]
-   * ```
-   *
-   * The basePath defaults to `/api`, meaning the default full internal
-   * path for the `catalog` plugin will be `http://localhost:7007/api/catalog`.
-   */
-  static fromConfig(config: Config, options?: { basePath?: string }) {
-    const basePath = options?.basePath ?? '/api';
-    const externalBaseUrl = config
-      .getString('backend.baseUrl')
-      .replace(/\/+$/, '');
-
-    const {
-      listen: { host: listenHost = '::', port: listenPort },
-    } = readHttpServerOptions(config.getConfig('backend'));
-    const protocol = config.has('backend.https') ? 'https' : 'http';
-
-    // Translate bind-all to localhost, and support IPv6
-    let host = listenHost;
-    if (host === '::' || host === '') {
-      // We use localhost instead of ::1, since IPv6-compatible systems should default
-      // to using IPv6 when they see localhost, but if the system doesn't support IPv6
-      // things will still work.
-      host = 'localhost';
-    } else if (host === '0.0.0.0') {
-      host = '127.0.0.1';
-    }
-    if (host.includes(':')) {
-      host = `[${host}]`;
-    }
-
-    const internalBaseUrl = `${protocol}://${host}:${listenPort}`;
-
-    return new HostDiscovery(
-      internalBaseUrl + basePath,
-      externalBaseUrl + basePath,
-      config.getOptionalConfig('discovery'),
-    );
-  }
-
-  private constructor(
-    private readonly internalBaseUrl: string,
-    private readonly externalBaseUrl: string,
-    private readonly discoveryConfig: Config | undefined,
-  ) {}
-
-  private getTargetFromConfig(pluginId: string, type: 'internal' | 'external') {
-    const endpoints = this.discoveryConfig?.getOptionalConfigArray('endpoints');
-
-    const target = endpoints
-      ?.find(endpoint => endpoint.getStringArray('plugins').includes(pluginId))
-      ?.get<Target>('target');
-
-    if (!target) {
-      const baseUrl =
-        type === 'external' ? this.externalBaseUrl : this.internalBaseUrl;
-
-      return `${baseUrl}/${encodeURIComponent(pluginId)}`;
-    }
-
-    if (typeof target === 'string') {
-      return target.replace(
-        /\{\{\s*pluginId\s*\}\}/g,
-        encodeURIComponent(pluginId),
-      );
-    }
-
-    return target[type].replace(
-      /\{\{\s*pluginId\s*\}\}/g,
-      encodeURIComponent(pluginId),
-    );
-  }
-
-  async getBaseUrl(pluginId: string): Promise<string> {
-    return this.getTargetFromConfig(pluginId, 'internal');
-  }
-
-  async getExternalBaseUrl(pluginId: string): Promise<string> {
-    return this.getTargetFromConfig(pluginId, 'external');
-  }
-}
+export const HostDiscovery = _HostDiscovery;
 
 /**
  * SingleHostDiscovery is a basic PluginEndpointDiscovery implementation
@@ -140,6 +45,6 @@ export class HostDiscovery implements PluginEndpointDiscovery {
  * resolved to the same host, so there won't be any balancing of internal traffic.
  *
  * @public
- * @deprecated Use {@link HostDiscovery} instead
+ * @deprecated Use `HostDiscovery` from `@backstage/backend-defaults/discovery` instead
  */
-export const SingleHostDiscovery = HostDiscovery;
+export const SingleHostDiscovery = _HostDiscovery;
