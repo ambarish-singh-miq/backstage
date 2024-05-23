@@ -5,19 +5,16 @@
 ```ts
 /// <reference types="node" />
 
-import { ExtensionPoint } from '@backstage/backend-plugin-api';
+import { BackstageCredentials } from '@backstage/backend-plugin-api';
 import { JsonObject } from '@backstage/types';
 import { JsonValue } from '@backstage/types';
 import { Logger } from 'winston';
 import { Observable } from '@backstage/types';
 import { Schema } from 'jsonschema';
+import { ScmIntegrationRegistry } from '@backstage/integration';
 import { ScmIntegrations } from '@backstage/integration';
 import { SpawnOptionsWithoutStdio } from 'child_process';
-import { TaskBroker as TaskBroker_2 } from '@backstage/plugin-scaffolder-node';
 import { TaskSpec } from '@backstage/plugin-scaffolder-common';
-import { TemplateAction as TemplateAction_2 } from '@backstage/plugin-scaffolder-node';
-import { TemplateFilter as TemplateFilter_2 } from '@backstage/plugin-scaffolder-node';
-import { TemplateGlobal as TemplateGlobal_2 } from '@backstage/plugin-scaffolder-node';
 import { TemplateInfo } from '@backstage/plugin-scaffolder-common';
 import { UrlReader } from '@backstage/backend-common';
 import { UserEntity } from '@backstage/catalog-model';
@@ -34,11 +31,16 @@ export type ActionContext<
   secrets?: TaskSecrets;
   workspacePath: string;
   input: TActionInput;
+  checkpoint<U extends JsonValue>(
+    key: string,
+    fn: () => Promise<U>,
+  ): Promise<U>;
   output(
     name: keyof TActionOutput,
     value: TActionOutput[keyof TActionOutput],
   ): void;
   createTemporaryDirectory(): Promise<string>;
+  getInitiatorCredentials(): Promise<BackstageCredentials>;
   templateInfo?: TemplateInfo;
   isDryRun?: boolean;
   user?: {
@@ -48,6 +50,101 @@ export type ActionContext<
   signal?: AbortSignal;
   each?: JsonObject;
 };
+
+// @public (undocumented)
+export function addFiles(options: {
+  dir: string;
+  filepath: string;
+  auth:
+    | {
+        username: string;
+        password: string;
+      }
+    | {
+        token: string;
+      };
+  logger?: Logger | undefined;
+}): Promise<void>;
+
+// @public (undocumented)
+export function cloneRepo(options: {
+  url: string;
+  dir: string;
+  auth:
+    | {
+        username: string;
+        password: string;
+      }
+    | {
+        token: string;
+      };
+  logger?: Logger | undefined;
+  ref?: string | undefined;
+  depth?: number | undefined;
+  noCheckout?: boolean | undefined;
+}): Promise<void>;
+
+// @public (undocumented)
+export function commitAndPushBranch(options: {
+  dir: string;
+  auth:
+    | {
+        username: string;
+        password: string;
+      }
+    | {
+        token: string;
+      };
+  logger?: Logger | undefined;
+  commitMessage: string;
+  gitAuthorInfo?: {
+    name?: string;
+    email?: string;
+  };
+  branch?: string;
+  remoteRef?: string;
+  remote?: string;
+}): Promise<{
+  commitHash: string;
+}>;
+
+// @public (undocumented)
+export function commitAndPushRepo(input: {
+  dir: string;
+  auth:
+    | {
+        username: string;
+        password: string;
+      }
+    | {
+        token: string;
+      };
+  logger: Logger;
+  commitMessage: string;
+  gitAuthorInfo?: {
+    name?: string;
+    email?: string;
+  };
+  branch?: string;
+  remoteRef?: string;
+}): Promise<{
+  commitHash: string;
+}>;
+
+// @public (undocumented)
+export function createBranch(options: {
+  dir: string;
+  ref: string;
+  auth:
+    | {
+        username: string;
+        password: string;
+      }
+    | {
+        token: string;
+      };
+  logger?: Logger | undefined;
+}): Promise<void>;
 
 // @public
 export const createTemplateAction: <
@@ -79,6 +176,12 @@ export const createTemplateAction: <
 ) => TemplateAction<TActionInput, TActionOutput>;
 
 // @public
+export function deserializeDirectoryContents(
+  targetPath: string,
+  files: SerializedFile[],
+): Promise<void>;
+
+// @public
 export function executeShellCommand(
   options: ExecuteShellCommandOptions,
 ): Promise<void>;
@@ -98,6 +201,7 @@ export function fetchContents(options: {
   baseUrl?: string;
   fetchUrl?: string;
   outputPath: string;
+  token?: string;
 }): Promise<void>;
 
 // @public
@@ -107,36 +211,71 @@ export function fetchFile(options: {
   baseUrl?: string;
   fetchUrl?: string;
   outputPath: string;
+  token?: string;
 }): Promise<void>;
 
-// @alpha
-export interface ScaffolderActionsExtensionPoint {
+// @public (undocumented)
+export const getRepoSourceDirectory: (
+  workspacePath: string,
+  sourcePath: string | undefined,
+) => string;
+
+// @public (undocumented)
+export function initRepoAndPush(input: {
+  dir: string;
+  remoteUrl: string;
+  auth:
+    | {
+        username: string;
+        password: string;
+      }
+    | {
+        token: string;
+      };
+  logger: Logger;
+  defaultBranch?: string;
+  commitMessage?: string;
+  gitAuthorInfo?: {
+    name?: string;
+    email?: string;
+  };
+}): Promise<{
+  commitHash: string;
+}>;
+
+// @public (undocumented)
+export const parseRepoUrl: (
+  repoUrl: string,
+  integrations: ScmIntegrationRegistry,
+) => {
+  repo: string;
+  host: string;
+  owner?: string | undefined;
+  organization?: string | undefined;
+  workspace?: string | undefined;
+  project?: string | undefined;
+};
+
+// @public (undocumented)
+export interface SerializedFile {
   // (undocumented)
-  addActions(...actions: TemplateAction_2<any, any>[]): void;
+  content: Buffer;
+  // (undocumented)
+  executable?: boolean;
+  // (undocumented)
+  path: string;
+  // (undocumented)
+  symlink?: boolean;
 }
 
-// @alpha
-export const scaffolderActionsExtensionPoint: ExtensionPoint<ScaffolderActionsExtensionPoint>;
-
-// @alpha
-export interface ScaffolderTaskBrokerExtensionPoint {
-  // (undocumented)
-  setTaskBroker(taskBroker: TaskBroker_2): void;
-}
-
-// @alpha
-export const scaffolderTaskBrokerExtensionPoint: ExtensionPoint<ScaffolderTaskBrokerExtensionPoint>;
-
-// @alpha
-export interface ScaffolderTemplatingExtensionPoint {
-  // (undocumented)
-  addTemplateFilters(filters: Record<string, TemplateFilter_2>): void;
-  // (undocumented)
-  addTemplateGlobals(filters: Record<string, TemplateGlobal_2>): void;
-}
-
-// @alpha
-export const scaffolderTemplatingExtensionPoint: ExtensionPoint<ScaffolderTemplatingExtensionPoint>;
+// @public (undocumented)
+export function serializeDirectoryContents(
+  sourcePath: string,
+  options?: {
+    gitignore?: boolean;
+    globPatterns?: string[];
+  },
+): Promise<SerializedFile[]>;
 
 // @public
 export type SerializedTask = {
@@ -147,6 +286,7 @@ export type SerializedTask = {
   lastHeartbeatAt?: string;
   createdBy?: string;
   secrets?: TaskSecrets;
+  state?: JsonObject;
 };
 
 // @public
@@ -179,6 +319,8 @@ export interface TaskBroker {
     tasks: SerializedTask[];
   }>;
   // (undocumented)
+  recoverTasks?(): Promise<void>;
+  // (undocumented)
   vacuumTasks(options: { timeoutS: number }): Promise<void>;
 }
 
@@ -202,6 +344,8 @@ export interface TaskContext {
   // (undocumented)
   cancelSignal: AbortSignal;
   // (undocumented)
+  cleanWorkspace?(): Promise<void>;
+  // (undocumented)
   complete(result: TaskCompletionState, metadata?: JsonObject): Promise<void>;
   // (undocumented)
   createdBy?: string;
@@ -210,17 +354,47 @@ export interface TaskContext {
   // (undocumented)
   emitLog(message: string, logMetadata?: JsonObject): Promise<void>;
   // (undocumented)
+  getInitiatorCredentials(): Promise<BackstageCredentials>;
+  // (undocumented)
+  getTaskState?(): Promise<
+    | {
+        state?: JsonObject;
+      }
+    | undefined
+  >;
+  // (undocumented)
   getWorkspaceName(): Promise<string>;
   // (undocumented)
   isDryRun?: boolean;
   // (undocumented)
+  rehydrateWorkspace?(options: {
+    taskId: string;
+    targetPath: string;
+  }): Promise<void>;
+  // (undocumented)
   secrets?: TaskSecrets;
   // (undocumented)
+  serializeWorkspace?(options: { path: string }): Promise<void>;
+  // (undocumented)
   spec: TaskSpec;
+  // (undocumented)
+  updateCheckpoint?(
+    options:
+      | {
+          key: string;
+          status: 'success';
+          value: JsonValue;
+        }
+      | {
+          key: string;
+          status: 'failed';
+          reason: string;
+        },
+  ): Promise<void>;
 }
 
 // @public
-export type TaskEventType = 'completion' | 'log' | 'cancelled';
+export type TaskEventType = 'completion' | 'log' | 'cancelled' | 'recovered';
 
 // @public
 export type TaskSecrets = Record<string, string> & {

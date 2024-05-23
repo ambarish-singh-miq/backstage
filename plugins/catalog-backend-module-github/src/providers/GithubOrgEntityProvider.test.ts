@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import { getVoidLogger } from '@backstage/backend-common';
 import { GroupEntity, UserEntity } from '@backstage/catalog-model';
 import {
   GithubCredentialsProvider,
@@ -22,21 +21,63 @@ import {
 } from '@backstage/integration';
 import { EntityProviderConnection } from '@backstage/plugin-catalog-node';
 import { graphql } from '@octokit/graphql';
-import { EventParams } from '@backstage/plugin-events-node';
+import {
+  DefaultEventsService,
+  EventParams,
+} from '@backstage/plugin-events-node';
 import { GithubOrgEntityProvider } from './GithubOrgEntityProvider';
 import { withLocations } from '../lib/withLocations';
+import { mockServices } from '@backstage/backend-test-utils';
 
 jest.mock('@octokit/graphql');
 
 describe('GithubOrgEntityProvider', () => {
   describe('read', () => {
+    let mockClient;
+    let entityProviderConnection: EntityProviderConnection;
+    let entityProvider: GithubOrgEntityProvider;
+
+    const setupMocks = (response: ((...args: any) => any) | undefined) => {
+      mockClient = jest.fn().mockImplementation(response);
+      (graphql.defaults as jest.Mock).mockReturnValue(mockClient);
+    };
+
+    beforeEach(() => {
+      entityProviderConnection = {
+        applyMutation: jest.fn(),
+        refresh: jest.fn(),
+      };
+
+      const logger = mockServices.logger.mock();
+      const gitHubConfig = {
+        host: 'https://github.com',
+      };
+
+      const mockGetCredentials = jest.fn().mockReturnValue({
+        headers: { token: 'blah' },
+        type: 'app',
+      });
+
+      const githubCredentialsProvider = {
+        getCredentials: mockGetCredentials,
+      };
+
+      entityProvider = new GithubOrgEntityProvider({
+        id: 'my-id',
+        githubCredentialsProvider,
+        orgUrl: 'https://github.com/backstage',
+        gitHubConfig,
+        logger,
+      });
+
+      entityProvider.connect(entityProviderConnection);
+    });
+
     afterEach(() => jest.resetAllMocks());
 
     it('should read org data and apply mutation', async () => {
-      const mockClient = jest.fn();
-
-      mockClient
-        .mockResolvedValueOnce({
+      setupMocks(() =>
+        Promise.resolve({
           organization: {
             membersWithRole: {
               pageInfo: { hasNextPage: false },
@@ -50,10 +91,6 @@ describe('GithubOrgEntityProvider', () => {
                 },
               ],
             },
-          },
-        })
-        .mockResolvedValueOnce({
-          organization: {
             teams: {
               pageInfo: { hasNextPage: false },
               nodes: [
@@ -76,38 +113,8 @@ describe('GithubOrgEntityProvider', () => {
               ],
             },
           },
-        });
-
-      (graphql.defaults as jest.Mock).mockReturnValue(mockClient);
-
-      const entityProviderConnection: EntityProviderConnection = {
-        applyMutation: jest.fn(),
-        refresh: jest.fn(),
-      };
-
-      const logger = getVoidLogger();
-      const gitHubConfig: GithubIntegrationConfig = {
-        host: 'https://github.com',
-      };
-
-      const mockGetCredentials = jest.fn().mockReturnValue({
-        headers: { token: 'blah' },
-        type: 'app',
-      });
-
-      const githubCredentialsProvider: GithubCredentialsProvider = {
-        getCredentials: mockGetCredentials,
-      };
-
-      const entityProvider = new GithubOrgEntityProvider({
-        id: 'my-id',
-        githubCredentialsProvider,
-        orgUrl: 'https://github.com/backstage',
-        gitHubConfig,
-        logger,
-      });
-
-      entityProvider.connect(entityProviderConnection);
+        }),
+      );
 
       await entityProvider.read();
 
@@ -170,6 +177,14 @@ describe('GithubOrgEntityProvider', () => {
         ],
         type: 'full',
       });
+    });
+
+    it('should not apply mutation if a request fails', async () => {
+      setupMocks(() => Promise.reject(new Error('Network error')));
+
+      await expect(entityProvider.read()).rejects.toThrow('Network error');
+
+      expect(entityProviderConnection.applyMutation).not.toHaveBeenCalled();
     });
   });
 
@@ -254,7 +269,8 @@ describe('GithubOrgEntityProvider', () => {
         refresh: jest.fn(),
       };
 
-      const logger = getVoidLogger();
+      const logger = mockServices.logger.mock();
+      const events = DefaultEventsService.create({ logger });
       const gitHubConfig: GithubIntegrationConfig = {
         host: 'github.com',
       };
@@ -269,6 +285,7 @@ describe('GithubOrgEntityProvider', () => {
       };
 
       const entityProvider = new GithubOrgEntityProvider({
+        events,
         id: 'my-id',
         githubCredentialsProvider,
         orgUrl: 'https://github.com/backstage',
@@ -276,7 +293,7 @@ describe('GithubOrgEntityProvider', () => {
         logger,
       });
 
-      entityProvider.connect(entityProviderConnection);
+      await entityProvider.connect(entityProviderConnection);
 
       const expectedEntity = {
         apiVersion: 'backstage.io/v1alpha1',
@@ -318,8 +335,7 @@ describe('GithubOrgEntityProvider', () => {
           },
         },
       };
-
-      await entityProvider.onEvent(event);
+      await events.publish(event);
 
       expect(entityProviderConnection.applyMutation).toHaveBeenCalledTimes(1);
       expect(entityProviderConnection.applyMutation).toHaveBeenCalledWith({
@@ -340,7 +356,8 @@ describe('GithubOrgEntityProvider', () => {
         refresh: jest.fn(),
       };
 
-      const logger = getVoidLogger();
+      const logger = mockServices.logger.mock();
+      const events = DefaultEventsService.create({ logger });
       const gitHubConfig: GithubIntegrationConfig = {
         host: 'github.com',
       };
@@ -355,6 +372,7 @@ describe('GithubOrgEntityProvider', () => {
       };
 
       const entityProvider = new GithubOrgEntityProvider({
+        events,
         id: 'my-id',
         githubCredentialsProvider,
         orgUrl: 'https://github.com/backstage',
@@ -362,7 +380,7 @@ describe('GithubOrgEntityProvider', () => {
         logger,
       });
 
-      entityProvider.connect(entityProviderConnection);
+      await entityProvider.connect(entityProviderConnection);
 
       const expectedEntity = {
         apiVersion: 'backstage.io/v1alpha1',
@@ -404,8 +422,7 @@ describe('GithubOrgEntityProvider', () => {
           },
         },
       };
-
-      await entityProvider.onEvent(event);
+      await events.publish(event);
 
       expect(entityProviderConnection.applyMutation).toHaveBeenCalledTimes(1);
       expect(entityProviderConnection.applyMutation).toHaveBeenCalledWith({
@@ -426,7 +443,8 @@ describe('GithubOrgEntityProvider', () => {
         refresh: jest.fn(),
       };
 
-      const logger = getVoidLogger();
+      const logger = mockServices.logger.mock();
+      const events = DefaultEventsService.create({ logger });
       const gitHubConfig: GithubIntegrationConfig = {
         host: 'github.com',
       };
@@ -441,6 +459,7 @@ describe('GithubOrgEntityProvider', () => {
       };
 
       const entityProvider = new GithubOrgEntityProvider({
+        events,
         id: 'my-id',
         githubCredentialsProvider,
         orgUrl: 'https://github.com/backstage',
@@ -496,7 +515,7 @@ describe('GithubOrgEntityProvider', () => {
         },
       };
 
-      await entityProvider.onEvent(event);
+      await events.publish(event);
 
       expect(entityProviderConnection.applyMutation).toHaveBeenCalledTimes(1);
       expect(entityProviderConnection.applyMutation).toHaveBeenCalledWith({
@@ -517,7 +536,8 @@ describe('GithubOrgEntityProvider', () => {
         refresh: jest.fn(),
       };
 
-      const logger = getVoidLogger();
+      const logger = mockServices.logger.mock();
+      const events = DefaultEventsService.create({ logger });
       const gitHubConfig: GithubIntegrationConfig = {
         host: 'github.com',
       };
@@ -532,6 +552,7 @@ describe('GithubOrgEntityProvider', () => {
       };
 
       const entityProvider = new GithubOrgEntityProvider({
+        events,
         id: 'my-id',
         githubCredentialsProvider,
         orgUrl: 'https://github.com/backstage',
@@ -539,7 +560,7 @@ describe('GithubOrgEntityProvider', () => {
         logger,
       });
 
-      entityProvider.connect(entityProviderConnection);
+      await entityProvider.connect(entityProviderConnection);
 
       const expectedEntity = {
         apiVersion: 'backstage.io/v1alpha1',
@@ -588,7 +609,7 @@ describe('GithubOrgEntityProvider', () => {
         },
       };
 
-      await entityProvider.onEvent(event);
+      await events.publish(event);
 
       expect(entityProviderConnection.applyMutation).toHaveBeenCalledTimes(1);
       expect(entityProviderConnection.applyMutation).toHaveBeenCalledWith({
@@ -609,7 +630,8 @@ describe('GithubOrgEntityProvider', () => {
         refresh: jest.fn(),
       };
 
-      const logger = getVoidLogger();
+      const logger = mockServices.logger.mock();
+      const events = DefaultEventsService.create({ logger });
       const gitHubConfig: GithubIntegrationConfig = {
         host: 'github.com',
       };
@@ -624,6 +646,7 @@ describe('GithubOrgEntityProvider', () => {
       };
 
       const entityProvider = new GithubOrgEntityProvider({
+        events,
         id: 'my-id',
         githubCredentialsProvider,
         orgUrl: 'https://github.com/backstage',
@@ -705,7 +728,7 @@ describe('GithubOrgEntityProvider', () => {
 
       (graphql.defaults as jest.Mock).mockReturnValue(mockClient);
 
-      entityProvider.connect(entityProviderConnection);
+      await entityProvider.connect(entityProviderConnection);
 
       const event: EventParams = {
         topic: 'github.team',
@@ -732,7 +755,7 @@ describe('GithubOrgEntityProvider', () => {
         },
       };
 
-      await entityProvider.onEvent(event);
+      await events.publish(event);
       await new Promise(process.nextTick);
 
       expect(entityProviderConnection.applyMutation).toHaveBeenCalledTimes(1);
@@ -858,7 +881,8 @@ describe('GithubOrgEntityProvider', () => {
         refresh: jest.fn(),
       };
 
-      const logger = getVoidLogger();
+      const logger = mockServices.logger.mock();
+      const events = DefaultEventsService.create({ logger });
       const gitHubConfig: GithubIntegrationConfig = {
         host: 'github.com',
       };
@@ -873,6 +897,7 @@ describe('GithubOrgEntityProvider', () => {
       };
 
       const entityProvider = new GithubOrgEntityProvider({
+        events,
         id: 'my-id',
         githubCredentialsProvider,
         orgUrl: 'https://github.com/backstage',
@@ -953,7 +978,7 @@ describe('GithubOrgEntityProvider', () => {
         });
 
       (graphql.defaults as jest.Mock).mockReturnValue(mockClient);
-      entityProvider.connect(entityProviderConnection);
+      await entityProvider.connect(entityProviderConnection);
 
       const event: EventParams = {
         topic: 'github.membership',
@@ -977,7 +1002,7 @@ describe('GithubOrgEntityProvider', () => {
         },
       };
 
-      await entityProvider.onEvent(event);
+      await events.publish(event);
       await new Promise(process.nextTick);
 
       expect(entityProviderConnection.applyMutation).toHaveBeenCalledTimes(1);
@@ -1104,7 +1129,8 @@ describe('GithubOrgEntityProvider', () => {
         refresh: jest.fn(),
       };
 
-      const logger = getVoidLogger();
+      const logger = mockServices.logger.mock();
+      const events = DefaultEventsService.create({ logger });
       const gitHubConfig: GithubIntegrationConfig = {
         host: 'github.com',
       };
@@ -1119,6 +1145,7 @@ describe('GithubOrgEntityProvider', () => {
       };
 
       const entityProvider = new GithubOrgEntityProvider({
+        events,
         id: 'my-id',
         githubCredentialsProvider,
         orgUrl: 'https://github.com/backstage',
@@ -1175,7 +1202,7 @@ describe('GithubOrgEntityProvider', () => {
         });
 
       (graphql.defaults as jest.Mock).mockReturnValue(mockClient);
-      entityProvider.connect(entityProviderConnection);
+      await entityProvider.connect(entityProviderConnection);
 
       const event: EventParams = {
         topic: 'github.membership',
@@ -1199,7 +1226,7 @@ describe('GithubOrgEntityProvider', () => {
         },
       };
 
-      await entityProvider.onEvent(event);
+      await events.publish(event);
       await new Promise(process.nextTick);
 
       expect(entityProviderConnection.applyMutation).toHaveBeenCalledTimes(1);

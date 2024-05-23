@@ -162,9 +162,13 @@ steps and merging them into the final object which is what is visible from the
 catalog API. As the final entity itself gets updated, the stitcher makes sure
 that the search table gets refreshed accordingly as well.
 
-> Note: The search table mentioned here is not related to the core Search
-> feature of Backstage. It's rather the table that backs the ability to filter
-> catalog API query results.
+:::note Note
+
+The search table mentioned here is not related to the core Search
+feature of Backstage. It's rather the table that backs the ability to filter
+catalog API query results.
+
+:::
 
 ![Stitching overview](../../assets/features/catalog/life-of-an-entity_stitching.svg)
 
@@ -341,7 +345,7 @@ the three-dots menu option of entity views does offer this option, and the
 orphaned status can be seen in an info box at the top of the entity's overview
 page.
 
-However, if you were to try to do an explicit depletion on an entity that's
+However, if you were to try to do an explicit deletion on an entity that's
 being kept actively updated by a parent entity, it would just reappear again
 shortly thereafter when the processing loops reconsider the parent entity that's
 still in there.

@@ -6,8 +6,6 @@ sidebar_label: Testing
 description: Learn how to test your backend plugins and modules
 ---
 
-> **DISCLAIMER: The new backend system is in alpha, and still under active development. While we have reviewed the interfaces carefully, they may still be iterated on before the stable release.**
-
 Utilities for testing backend plugins and modules are available in
 `@backstage/backend-test-utils`. This section describes those facilities.
 
@@ -23,8 +21,7 @@ collective term for backend [plugins](../architecture/04-plugins.md) and
 
 The function returns an HTTP server instance which can be used together with
 e.g. `supertest` to easily test the actual REST service surfaces of plugins who
-register routes with [the HTTP router service
-API](../core-services/01-index.md).
+register routes with [the HTTP router service API](../core-services/01-index.md).
 
 ```ts
 import { mockServices, startTestBackend } from '@backstage/backend-test-utils';
@@ -120,7 +117,7 @@ describe('MyDatabaseClass', () => {
   // "physical" databases to test against is much costlier than creating the
   // "logical" databases within them that the individual tests use.
   const databases = TestDatabases.create({
-    ids: ['POSTGRES_13', 'POSTGRES_9', 'SQLITE_3', 'MYSQL_8'],
+    ids: ['POSTGRES_16', 'POSTGRES_12', 'SQLITE_3', 'MYSQL_8'],
   });
 
   // Just an example of how to conveniently bundle up the setup code

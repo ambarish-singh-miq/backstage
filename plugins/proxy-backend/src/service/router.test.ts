@@ -14,7 +14,10 @@
  * limitations under the License.
  */
 
-import { getVoidLogger, SingleHostDiscovery } from '@backstage/backend-common';
+import {
+  HostDiscovery,
+  loggerToWinstonLogger,
+} from '@backstage/backend-common';
 import { mockServices } from '@backstage/backend-test-utils';
 import { ConfigReader } from '@backstage/config';
 import { Request, Response } from 'express';
@@ -37,7 +40,7 @@ const mockCreateProxyMiddleware = createProxyMiddleware as jest.MockedFunction<
 
 describe('createRouter', () => {
   describe('where all proxy config are valid', () => {
-    const logger = getVoidLogger();
+    const logger = loggerToWinstonLogger(mockServices.logger.mock());
     const config = new ConfigReader({
       backend: {
         baseUrl: 'https://example.com:7007',
@@ -56,7 +59,7 @@ describe('createRouter', () => {
         },
       },
     });
-    const discovery = SingleHostDiscovery.fromConfig(config);
+    const discovery = HostDiscovery.fromConfig(config);
 
     beforeEach(() => {
       mockCreateProxyMiddleware.mockClear();
@@ -130,7 +133,7 @@ describe('createRouter', () => {
 
   describe('where buildMiddleware would fail', () => {
     it('throws an error if skip failures is not set', async () => {
-      const logger = getVoidLogger();
+      const logger = loggerToWinstonLogger(mockServices.logger.mock());
       logger.warn = jest.fn();
       const config = new ConfigReader({
         backend: {
@@ -150,7 +153,7 @@ describe('createRouter', () => {
           },
         },
       });
-      const discovery = SingleHostDiscovery.fromConfig(config);
+      const discovery = HostDiscovery.fromConfig(config);
       await expect(
         createRouter({
           config,
@@ -165,7 +168,7 @@ describe('createRouter', () => {
     });
 
     it('works if skip failures is set', async () => {
-      const logger = getVoidLogger();
+      const logger = loggerToWinstonLogger(mockServices.logger.mock());
       logger.warn = jest.fn();
       const config = new ConfigReader({
         backend: {
@@ -185,7 +188,7 @@ describe('createRouter', () => {
           },
         },
       });
-      const discovery = SingleHostDiscovery.fromConfig(config);
+      const discovery = HostDiscovery.fromConfig(config);
       const router = await createRouter({
         config,
         logger,
@@ -201,7 +204,7 @@ describe('createRouter', () => {
 });
 
 describe('buildMiddleware', () => {
-  const logger = getVoidLogger();
+  const logger = loggerToWinstonLogger(mockServices.logger.mock());
 
   beforeEach(() => {
     mockCreateProxyMiddleware.mockClear();

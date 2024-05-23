@@ -14,25 +14,83 @@
  * limitations under the License.
  */
 
+import { format } from 'logform';
 import { WinstonLogger } from './WinstonLogger';
-
-function msg(message: string) {
-  return { message, level: 'info' };
-}
+import Transport from 'winston-transport';
+import { MESSAGE } from 'triple-beam';
 
 describe('WinstonLogger', () => {
-  it('redacter should redact and escape regex', () => {
-    const redacter = WinstonLogger.redacter();
-    expect(redacter.format.transform(msg('hello (world)'))).toEqual(
-      msg('hello (world)'),
+  it('creates a winston logger instance with default options', () => {
+    const logger = WinstonLogger.create({});
+    expect(logger).toBeInstanceOf(WinstonLogger);
+  });
+
+  it('creates a child logger', () => {
+    const logger = WinstonLogger.create({});
+    const childLogger = logger.child({ plugin: 'test-plugin' });
+    expect(childLogger).toBeInstanceOf(WinstonLogger);
+  });
+
+  it('should redact and escape regex', () => {
+    const mockTransport = new Transport({
+      log: jest.fn(),
+      logv: jest.fn(),
+    });
+
+    const logger = WinstonLogger.create({
+      format: format.json(),
+      transports: [mockTransport],
+    });
+
+    logger.addRedactions(['hello (world']);
+
+    logger.error('hello (world) from this file');
+
+    expect(mockTransport.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        [MESSAGE]: JSON.stringify({
+          level: 'error',
+          message: '***) from this file',
+        }),
+      }),
+      expect.any(Function),
     );
-    redacter.add(['hello']);
-    expect(redacter.format.transform(msg('hello (world)'))).toEqual(
-      msg('[REDACTED] (world)'),
-    );
-    redacter.add(['(world)']);
-    expect(redacter.format.transform(msg('hello (world)'))).toEqual(
-      msg('[REDACTED] [REDACTED]'),
+  });
+
+  it('should redact nested object', () => {
+    const mockTransport = new Transport({
+      log: jest.fn(),
+      logv: jest.fn(),
+    });
+
+    const logger = WinstonLogger.create({
+      format: format.json(),
+      transports: [mockTransport],
+    });
+
+    logger.addRedactions(['hello']);
+
+    logger.error('something went wrong', {
+      null: null,
+      nested: 'hello (world) from nested object',
+      nullProto: Object.create(null, {
+        foo: { value: 'hello foo', enumerable: true },
+      }),
+    });
+
+    expect(mockTransport.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        [MESSAGE]: JSON.stringify({
+          level: 'error',
+          message: 'something went wrong',
+          nested: '*** (world) from nested object',
+          null: null,
+          nullProto: {
+            foo: '*** foo',
+          },
+        }),
+      }),
+      expect.any(Function),
     );
   });
 });

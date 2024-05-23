@@ -14,7 +14,12 @@
  * limitations under the License.
  */
 
-import { PluginDatabaseManager, UrlReader } from '@backstage/backend-common';
+import {
+  HostDiscovery,
+  PluginDatabaseManager,
+  UrlReader,
+  createLegacyAuthAdapters,
+} from '@backstage/backend-common';
 import { PluginTaskScheduler } from '@backstage/backend-tasks';
 import { CatalogApi } from '@backstage/catalog-client';
 import {
@@ -24,10 +29,10 @@ import {
   stringifyEntityRef,
   UserEntity,
 } from '@backstage/catalog-model';
-import { Config } from '@backstage/config';
+import { Config, readDurationFromConfig } from '@backstage/config';
 import { InputError, NotFoundError, stringifyError } from '@backstage/errors';
 import { ScmIntegrations } from '@backstage/integration';
-import { JsonObject, JsonValue } from '@backstage/types';
+import { HumanDuration, JsonObject, JsonValue } from '@backstage/types';
 import {
   TaskSpec,
   TemplateEntityV1beta3,
@@ -40,40 +45,55 @@ import {
   RESOURCE_TYPE_SCAFFOLDER_TEMPLATE,
   scaffolderActionPermissions,
   scaffolderTemplatePermissions,
+  taskCancelPermission,
+  taskCreatePermission,
+  taskReadPermission,
   templateParameterReadPermission,
   templateStepReadPermission,
+  scaffolderTaskPermissions,
 } from '@backstage/plugin-scaffolder-common/alpha';
 import express from 'express';
 import Router from 'express-promise-router';
 import { validate } from 'jsonschema';
 import { Logger } from 'winston';
 import { z } from 'zod';
-import { TemplateFilter, TemplateGlobal } from '../lib';
+import {
+  TemplateAction,
+  TaskBroker,
+  TemplateFilter,
+  TemplateGlobal,
+} from '@backstage/plugin-scaffolder-node';
 import {
   createBuiltinActions,
   DatabaseTaskStore,
-  TaskBroker,
   TaskWorker,
   TemplateActionRegistry,
 } from '../scaffolder';
 import { createDryRunner } from '../scaffolder/dryrun';
 import { StorageTaskBroker } from '../scaffolder/tasks/StorageTaskBroker';
 import { findTemplate, getEntityBaseUrl, getWorkingDirectory } from './helpers';
-import {
-  IdentityApi,
-  IdentityApiGetIdentityRequest,
-} from '@backstage/plugin-auth-node';
-import { TemplateAction } from '@backstage/plugin-scaffolder-node';
-import {
-  PermissionEvaluator,
-  PermissionRuleParams,
-} from '@backstage/plugin-permission-common';
+import { PermissionRuleParams } from '@backstage/plugin-permission-common';
 import {
   createConditionAuthorizer,
   createPermissionIntegrationRouter,
   PermissionRule,
 } from '@backstage/plugin-permission-node';
 import { scaffolderActionRules, scaffolderTemplateRules } from './rules';
+import { Duration } from 'luxon';
+import {
+  AuthService,
+  BackstageCredentials,
+  DiscoveryService,
+  HttpAuthService,
+  LifecycleService,
+  PermissionsService,
+} from '@backstage/backend-plugin-api';
+import {
+  IdentityApi,
+  IdentityApiGetIdentityRequest,
+} from '@backstage/plugin-auth-node';
+import { InternalTaskSecrets } from '../scaffolder/tasks/types';
+import { checkPermission } from '../util/checkPermissions';
 
 /**
  *
@@ -120,6 +140,7 @@ export interface RouterOptions {
   logger: Logger;
   config: Config;
   reader: UrlReader;
+  lifecycle?: LifecycleService;
   database: PluginDatabaseManager;
   catalogClient: CatalogApi;
   scheduler?: PluginTaskScheduler;
@@ -137,11 +158,14 @@ export interface RouterOptions {
   taskBroker?: TaskBroker;
   additionalTemplateFilters?: Record<string, TemplateFilter>;
   additionalTemplateGlobals?: Record<string, TemplateGlobal>;
-  permissions?: PermissionEvaluator;
+  permissions?: PermissionsService;
   permissionRules?: Array<
     TemplatePermissionRuleInput | ActionPermissionRuleInput
   >;
+  auth?: AuthService;
+  httpAuth?: HttpAuthService;
   identity?: IdentityApi;
+  discovery?: DiscoveryService;
 }
 
 function isSupportedTemplate(entity: TemplateEntityV1beta3) {
@@ -212,6 +236,17 @@ function buildDefaultIdentityClient(options: RouterOptions): IdentityApi {
   };
 }
 
+const readDuration = (
+  config: Config,
+  key: string,
+  defaultValue: HumanDuration,
+) => {
+  if (config.has(key)) {
+    return readDurationFromConfig(config, { key });
+  }
+  return defaultValue;
+};
+
 /**
  * A method to create a router for the scaffolder backend plugin.
  * @public
@@ -236,31 +271,48 @@ export async function createRouter(
     additionalTemplateGlobals,
     permissions,
     permissionRules,
+    discovery = HostDiscovery.fromConfig(config),
+    identity = buildDefaultIdentityClient(options),
   } = options;
+
+  const { auth, httpAuth } = createLegacyAuthAdapters({
+    ...options,
+    identity,
+    discovery,
+  });
+
   const concurrentTasksLimit =
     options.concurrentTasksLimit ??
     options.config.getOptionalNumber('scaffolder.concurrentTasksLimit');
 
   const logger = parentLogger.child({ plugin: 'scaffolder' });
 
-  const identity: IdentityApi =
-    options.identity || buildDefaultIdentityClient(options);
   const workingDirectory = await getWorkingDirectory(config, logger);
   const integrations = ScmIntegrations.fromConfig(config);
 
   let taskBroker: TaskBroker;
   if (!options.taskBroker) {
     const databaseTaskStore = await DatabaseTaskStore.create({ database });
-    taskBroker = new StorageTaskBroker(databaseTaskStore, logger);
+    taskBroker = new StorageTaskBroker(databaseTaskStore, logger, config, auth);
 
     if (scheduler && databaseTaskStore.listStaleTasks) {
       await scheduler.scheduleTask({
         id: 'close_stale_tasks',
-        frequency: { cron: '*/5 * * * *' }, // every 5 minutes, also supports Duration
+        frequency: readDuration(
+          config,
+          'scaffolder.taskTimeoutJanitorFrequency',
+          {
+            minutes: 5,
+          },
+        ),
         timeout: { minutes: 15 },
         fn: async () => {
           const { tasks } = await databaseTaskStore.listStaleTasks({
-            timeoutS: 86400,
+            timeoutS: Duration.fromObject(
+              readDuration(config, 'scaffolder.taskTimeout', {
+                hours: 24,
+              }),
+            ).as('seconds'),
           });
 
           for (const task of tasks) {
@@ -276,7 +328,7 @@ export async function createRouter(
 
   const actionRegistry = new TemplateActionRegistry();
 
-  const workers = [];
+  const workers: TaskWorker[] = [];
   if (concurrentTasksLimit !== 0) {
     for (let i = 0; i < (taskWorkers || 1); i++) {
       const worker = await TaskWorker.create({
@@ -303,10 +355,23 @@ export async function createRouter(
         config,
         additionalTemplateFilters,
         additionalTemplateGlobals,
+        auth,
       });
 
   actionsToRegister.forEach(action => actionRegistry.register(action));
-  workers.forEach(worker => worker.start());
+
+  const launchWorkers = () => workers.forEach(worker => worker.start());
+
+  const shutdownWorkers = () => {
+    workers.forEach(worker => worker.stop());
+  };
+
+  if (options.lifecycle) {
+    options.lifecycle.addStartupHook(launchWorkers);
+    options.lifecycle.addShutdownHook(shutdownWorkers);
+  } else {
+    launchWorkers();
+  }
 
   const dryRunner = createDryRunner({
     actionRegistry,
@@ -347,6 +412,7 @@ export async function createRouter(
         rules: actionRules,
       },
     ],
+    permissions: scaffolderTaskPermissions,
   });
 
   router.use(permissionIntegrationRouter);
@@ -355,16 +421,26 @@ export async function createRouter(
     .get(
       '/v2/templates/:namespace/:kind/:name/parameter-schema',
       async (req, res) => {
-        const userIdentity = await identity.getIdentity({
-          request: req,
-        });
-        const token = userIdentity?.token;
+        const credentials = await httpAuth.credentials(req);
 
-        const template = await authorizeTemplate(req.params, token);
+        const { token } = await auth.getPluginRequestToken({
+          onBehalfOf: credentials,
+          targetPluginId: 'catalog',
+        });
+
+        const template = await authorizeTemplate(
+          req.params,
+          token,
+          credentials,
+        );
 
         const parameters = [template.spec.parameters ?? []].flat();
+
+        const presentation = template.spec.presentation;
+
         res.json({
           title: template.metadata.title ?? template.metadata.name,
+          ...(presentation ? { presentation } : {}),
           description: template.metadata.description,
           'ui:options': template.metadata['ui:options'],
           steps: parameters.map(schema => ({
@@ -392,11 +468,21 @@ export async function createRouter(
         defaultKind: 'template',
       });
 
-      const callerIdentity = await identity.getIdentity({
-        request: req,
+      const credentials = await httpAuth.credentials(req);
+      await checkPermission({
+        credentials,
+        permissions: [taskCreatePermission],
+        permissionService: permissions,
       });
-      const token = callerIdentity?.token;
-      const userEntityRef = callerIdentity?.identity.userEntityRef;
+
+      const { token } = await auth.getPluginRequestToken({
+        onBehalfOf: credentials,
+        targetPluginId: 'catalog',
+      });
+
+      const userEntityRef = auth.isPrincipal(credentials, 'user')
+        ? credentials.principal.userEntityRef
+        : undefined;
 
       const userEntity = userEntityRef
         ? await catalogClient.getEntityByRef(userEntityRef, { token })
@@ -413,6 +499,7 @@ export async function createRouter(
       const template = await authorizeTemplate(
         { kind, namespace, name },
         token,
+        credentials,
       );
 
       for (const parameters of [template.spec.parameters ?? []].flat()) {
@@ -433,6 +520,7 @@ export async function createRouter(
           id: step.id ?? `step-${index + 1}`,
           name: step.name ?? step.action,
         })),
+        EXPERIMENTAL_recovery: template.spec.EXPERIMENTAL_recovery,
         output: template.spec.output ?? {},
         parameters: values,
         user: {
@@ -448,20 +536,29 @@ export async function createRouter(
         },
       };
 
+      const secrets: InternalTaskSecrets = {
+        ...req.body.secrets,
+        backstageToken: token,
+        __initiatorCredentials: JSON.stringify(credentials),
+      };
+
       const result = await taskBroker.dispatch({
         spec: taskSpec,
         createdBy: userEntityRef,
-        secrets: {
-          ...req.body.secrets,
-          backstageToken: token,
-        },
+        secrets,
       });
 
       res.status(201).json({ id: result.taskId });
     })
     .get('/v2/tasks', async (req, res) => {
-      const [userEntityRef] = [req.query.createdBy].flat();
+      const credentials = await httpAuth.credentials(req);
+      await checkPermission({
+        credentials,
+        permissions: [taskReadPermission],
+        permissionService: permissions,
+      });
 
+      const [userEntityRef] = [req.query.createdBy].flat();
       if (
         typeof userEntityRef !== 'string' &&
         typeof userEntityRef !== 'undefined'
@@ -482,6 +579,13 @@ export async function createRouter(
       res.status(200).json(tasks);
     })
     .get('/v2/tasks/:taskId', async (req, res) => {
+      const credentials = await httpAuth.credentials(req);
+      await checkPermission({
+        credentials,
+        permissions: [taskReadPermission],
+        permissionService: permissions,
+      });
+
       const { taskId } = req.params;
       const task = await taskBroker.get(taskId);
       if (!task) {
@@ -492,11 +596,26 @@ export async function createRouter(
       res.status(200).json(task);
     })
     .post('/v2/tasks/:taskId/cancel', async (req, res) => {
+      const credentials = await httpAuth.credentials(req);
+      // Requires both read and cancel permissions
+      await checkPermission({
+        credentials,
+        permissions: [taskCancelPermission, taskReadPermission],
+        permissionService: permissions,
+      });
+
       const { taskId } = req.params;
       await taskBroker.cancel?.(taskId);
       res.status(200).json({ status: 'cancelled' });
     })
     .get('/v2/tasks/:taskId/eventstream', async (req, res) => {
+      const credentials = await httpAuth.credentials(req);
+      await checkPermission({
+        credentials,
+        permissions: [taskReadPermission],
+        permissionService: permissions,
+      });
+
       const { taskId } = req.params;
       const after =
         req.query.after !== undefined ? Number(req.query.after) : undefined;
@@ -545,6 +664,13 @@ export async function createRouter(
       });
     })
     .get('/v2/tasks/:taskId/events', async (req, res) => {
+      const credentials = await httpAuth.credentials(req);
+      await checkPermission({
+        credentials,
+        permissions: [taskReadPermission],
+        permissionService: permissions,
+      });
+
       const { taskId } = req.params;
       const after = Number(req.query.after) || undefined;
 
@@ -575,6 +701,13 @@ export async function createRouter(
       });
     })
     .post('/v2/dry-run', async (req, res) => {
+      const credentials = await httpAuth.credentials(req);
+      await checkPermission({
+        credentials,
+        permissions: [taskCreatePermission],
+        permissionService: permissions,
+      });
+
       const bodySchema = z.object({
         template: z.unknown(),
         values: z.record(z.unknown()),
@@ -592,11 +725,10 @@ export async function createRouter(
         throw new InputError('Input template is not a template');
       }
 
-      const token = (
-        await identity.getIdentity({
-          request: req,
-        })
-      )?.token;
+      const { token } = await auth.getPluginRequestToken({
+        onBehalfOf: credentials,
+        targetPluginId: 'catalog',
+      });
 
       for (const parameters of [template.spec.parameters ?? []].flat()) {
         const result = validate(body.values, parameters);
@@ -627,6 +759,7 @@ export async function createRouter(
           ...body.secrets,
           ...(token && { backstageToken: token }),
         },
+        credentials,
       });
 
       res.status(200).json({
@@ -647,6 +780,7 @@ export async function createRouter(
   async function authorizeTemplate(
     entityRef: CompoundEntityRef,
     token: string | undefined,
+    credentials: BackstageCredentials,
   ) {
     const template = await findTemplate({
       catalogApi: catalogClient,
@@ -672,7 +806,7 @@ export async function createRouter(
           { permission: templateParameterReadPermission },
           { permission: templateStepReadPermission },
         ],
-        { token },
+        { credentials },
       );
 
     // Authorize parameters

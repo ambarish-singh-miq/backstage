@@ -5,15 +5,64 @@
 ```ts
 /// <reference types="node" />
 
+import { AuthorizePermissionRequest } from '@backstage/plugin-permission-common';
+import { AuthorizePermissionResponse } from '@backstage/plugin-permission-common';
 import { Config } from '@backstage/config';
+import { Duration } from 'luxon';
 import { Handler } from 'express';
+import { HumanDuration } from '@backstage/types';
 import { IdentityApi } from '@backstage/plugin-auth-node';
+import { isChildPath } from '@backstage/cli-common';
 import { JsonObject } from '@backstage/types';
 import { JsonValue } from '@backstage/types';
 import { Knex } from 'knex';
+import { PermissionAttributes } from '@backstage/plugin-permission-common';
 import { PermissionEvaluator } from '@backstage/plugin-permission-common';
-import { PluginTaskScheduler } from '@backstage/backend-tasks';
+import { QueryPermissionRequest } from '@backstage/plugin-permission-common';
+import { QueryPermissionResponse } from '@backstage/plugin-permission-common';
 import { Readable } from 'stream';
+import { Request as Request_2 } from 'express';
+import { Response as Response_2 } from 'express';
+
+// @public (undocumented)
+export interface AuthService {
+  // (undocumented)
+  authenticate(
+    token: string,
+    options?: {
+      allowLimitedAccess?: boolean;
+    },
+  ): Promise<BackstageCredentials>;
+  // (undocumented)
+  getLimitedUserToken(
+    credentials: BackstageCredentials<BackstageUserPrincipal>,
+  ): Promise<{
+    token: string;
+    expiresAt: Date;
+  }>;
+  // (undocumented)
+  getNoneCredentials(): Promise<BackstageCredentials<BackstageNonePrincipal>>;
+  // (undocumented)
+  getOwnServiceCredentials(): Promise<
+    BackstageCredentials<BackstageServicePrincipal>
+  >;
+  // (undocumented)
+  getPluginRequestToken(options: {
+    onBehalfOf: BackstageCredentials;
+    targetPluginId: string;
+  }): Promise<{
+    token: string;
+  }>;
+  // (undocumented)
+  isPrincipal<TType extends keyof BackstagePrincipalTypes>(
+    credentials: BackstageCredentials,
+    type: TType,
+  ): credentials is BackstageCredentials<BackstagePrincipalTypes[TType]>;
+  // (undocumented)
+  listPublicServiceKeys(): Promise<{
+    keys: JsonObject[];
+  }>;
+}
 
 // @public (undocumented)
 export interface BackendFeature {
@@ -76,6 +125,55 @@ export interface BackendPluginRegistrationPoints {
   }): void;
 }
 
+// @public (undocumented)
+export type BackstageCredentials<TPrincipal = unknown> = {
+  $$type: '@backstage/BackstageCredentials';
+  expiresAt?: Date;
+  principal: TPrincipal;
+};
+
+// @public (undocumented)
+export type BackstageNonePrincipal = {
+  type: 'none';
+};
+
+// @public
+export type BackstagePrincipalAccessRestrictions = {
+  permissionNames?: string[];
+  permissionAttributes?: {
+    action?: Array<Required<PermissionAttributes>['action']>;
+  };
+};
+
+// @public (undocumented)
+export type BackstagePrincipalTypes = {
+  user: BackstageUserPrincipal;
+  service: BackstageServicePrincipal;
+  none: BackstageNonePrincipal;
+  unknown: unknown;
+};
+
+// @public (undocumented)
+export type BackstageServicePrincipal = {
+  type: 'service';
+  subject: string;
+  accessRestrictions?: BackstagePrincipalAccessRestrictions;
+};
+
+// @public (undocumented)
+export interface BackstageUserInfo {
+  // (undocumented)
+  ownershipEntityRefs: string[];
+  // (undocumented)
+  userEntityRef: string;
+}
+
+// @public (undocumented)
+export type BackstageUserPrincipal = {
+  type: 'user';
+  userEntityRef: string;
+};
+
 // @public
 export interface CacheService {
   delete(key: string): Promise<void>;
@@ -100,10 +198,13 @@ export type CacheServiceSetOptions = {
 
 // @public
 export namespace coreServices {
+  const auth: ServiceRef<AuthService, 'plugin'>;
+  const userInfo: ServiceRef<UserInfoService, 'plugin'>;
   const cache: ServiceRef<CacheService, 'plugin'>;
   const rootConfig: ServiceRef<RootConfigService, 'root'>;
   const database: ServiceRef<DatabaseService, 'plugin'>;
   const discovery: ServiceRef<DiscoveryService, 'plugin'>;
+  const httpAuth: ServiceRef<HttpAuthService, 'plugin'>;
   const httpRouter: ServiceRef<HttpRouterService, 'plugin'>;
   const lifecycle: ServiceRef<LifecycleService, 'plugin'>;
   const logger: ServiceRef<LoggerService, 'plugin'>;
@@ -113,9 +214,11 @@ export namespace coreServices {
   const rootLifecycle: ServiceRef<RootLifecycleService, 'root'>;
   const rootLogger: ServiceRef<RootLoggerService, 'root'>;
   const scheduler: ServiceRef<SchedulerService, 'plugin'>;
-  const tokenManager: ServiceRef<TokenManagerService, 'plugin'>;
+  const // @deprecated
+    tokenManager: ServiceRef<TokenManagerService, 'plugin'>;
   const urlReader: ServiceRef<UrlReaderService, 'plugin'>;
-  const identity: ServiceRef<IdentityService, 'plugin'>;
+  const // @deprecated
+    identity: ServiceRef<IdentityService, 'plugin'>;
 }
 
 // @public
@@ -223,13 +326,49 @@ export interface ExtensionPointConfig {
 }
 
 // @public (undocumented)
+export interface HttpAuthService {
+  // (undocumented)
+  credentials<TAllowed extends keyof BackstagePrincipalTypes = 'unknown'>(
+    req: Request_2<any, any, any, any, any>,
+    options?: {
+      allow?: Array<TAllowed>;
+      allowLimitedAccess?: boolean;
+    },
+  ): Promise<BackstageCredentials<BackstagePrincipalTypes[TAllowed]>>;
+  // (undocumented)
+  issueUserCookie(
+    res: Response_2,
+    options?: {
+      credentials?: BackstageCredentials;
+    },
+  ): Promise<{
+    expiresAt: Date;
+  }>;
+}
+
+// @public (undocumented)
 export interface HttpRouterService {
+  // (undocumented)
+  addAuthPolicy(policy: HttpRouterServiceAuthPolicy): void;
   // (undocumented)
   use(handler: Handler): void;
 }
 
 // @public (undocumented)
+export interface HttpRouterServiceAuthPolicy {
+  // (undocumented)
+  allow: 'unauthenticated' | 'user-cookie';
+  // (undocumented)
+  path: string;
+}
+
+// @public (undocumented)
 export interface IdentityService extends IdentityApi {}
+
+export { isChildPath };
+
+// @public
+export function isDatabaseConflictError(e: unknown): boolean;
 
 // @public (undocumented)
 export interface LifecycleService {
@@ -274,7 +413,27 @@ export interface LoggerService {
 }
 
 // @public (undocumented)
-export interface PermissionsService extends PermissionEvaluator {}
+export interface PermissionsService extends PermissionEvaluator {
+  // (undocumented)
+  authorize(
+    requests: AuthorizePermissionRequest[],
+    options?: PermissionsServiceRequestOptions,
+  ): Promise<AuthorizePermissionResponse[]>;
+  // (undocumented)
+  authorizeConditional(
+    requests: QueryPermissionRequest[],
+    options?: PermissionsServiceRequestOptions,
+  ): Promise<QueryPermissionResponse[]>;
+}
+
+// @public
+export type PermissionsServiceRequestOptions =
+  | {
+      token?: string;
+    }
+  | {
+      credentials: BackstageCredentials;
+    };
 
 // @public (undocumented)
 export interface PluginMetadataService {
@@ -302,9 +461,15 @@ export interface PluginServiceFactoryConfig<
     deps: ServiceRefsToInstances<TDeps>,
     context: TContext,
   ): TImpl | Promise<TImpl>;
+  initialization?: 'always' | 'lazy';
   // (undocumented)
   service: ServiceRef<TService, 'plugin'>;
 }
+
+// @public
+export function readSchedulerServiceTaskScheduleDefinitionFromConfig(
+  config: Config,
+): SchedulerServiceTaskScheduleDefinition;
 
 // @public
 export type ReadTreeOptions = {
@@ -316,6 +481,7 @@ export type ReadTreeOptions = {
   ): boolean;
   etag?: string;
   signal?: AbortSignal;
+  token?: string;
 };
 
 // @public
@@ -343,6 +509,7 @@ export type ReadUrlOptions = {
   etag?: string;
   lastModifiedAfter?: Date;
   signal?: AbortSignal;
+  token?: string;
 };
 
 // @public
@@ -352,6 +519,12 @@ export type ReadUrlResponse = {
   etag?: string;
   lastModifiedAt?: Date;
 };
+
+// @public
+export function resolvePackagePath(name: string, ...paths: string[]): string;
+
+// @public
+export function resolveSafeChildPath(base: string, path: string): string;
 
 // @public (undocumented)
 export interface RootConfigService extends Config {}
@@ -379,17 +552,81 @@ export interface RootServiceFactoryConfig<
   deps: TDeps;
   // (undocumented)
   factory(deps: ServiceRefsToInstances<TDeps, 'root'>): TImpl | Promise<TImpl>;
+  initialization?: 'always' | 'lazy';
   // (undocumented)
   service: ServiceRef<TService, 'root'>;
 }
 
-// @public (undocumented)
-export interface SchedulerService extends PluginTaskScheduler {}
+// @public
+export interface SchedulerService {
+  createScheduledTaskRunner(
+    schedule: SchedulerServiceTaskScheduleDefinition,
+  ): SchedulerServiceTaskRunner;
+  getScheduledTasks(): Promise<SchedulerServiceTaskDescriptor[]>;
+  scheduleTask(
+    task: SchedulerServiceTaskScheduleDefinition &
+      SchedulerServiceTaskInvocationDefinition,
+  ): Promise<void>;
+  triggerTask(id: string): Promise<void>;
+}
+
+// @public
+export type SchedulerServiceTaskDescriptor = {
+  id: string;
+  scope: 'global' | 'local';
+  settings: {
+    version: number;
+  } & JsonObject;
+};
+
+// @public
+export type SchedulerServiceTaskFunction =
+  | ((abortSignal: AbortSignal) => void | Promise<void>)
+  | (() => void | Promise<void>);
+
+// @public
+export interface SchedulerServiceTaskInvocationDefinition {
+  fn: SchedulerServiceTaskFunction;
+  id: string;
+  signal?: AbortSignal;
+}
+
+// @public
+export interface SchedulerServiceTaskRunner {
+  run(task: SchedulerServiceTaskInvocationDefinition): Promise<void>;
+}
+
+// @public
+export interface SchedulerServiceTaskScheduleDefinition {
+  frequency:
+    | {
+        cron: string;
+      }
+    | Duration
+    | HumanDuration;
+  initialDelay?: Duration | HumanDuration;
+  scope?: 'global' | 'local';
+  timeout: Duration | HumanDuration;
+}
+
+// @public
+export interface SchedulerServiceTaskScheduleDefinitionConfig {
+  frequency:
+    | {
+        cron: string;
+      }
+    | string
+    | HumanDuration;
+  initialDelay?: string | HumanDuration;
+  scope?: 'global' | 'local';
+  timeout: string | HumanDuration;
+}
 
 // @public
 export type SearchOptions = {
   etag?: string;
   signal?: AbortSignal;
+  token?: string;
 };
 
 // @public
@@ -425,7 +662,6 @@ export type ServiceRef<
   id: string;
   scope: TScope;
   T: TService;
-  toString(): string;
   $$type: '@backstage/ServiceRef';
 };
 
@@ -454,5 +690,11 @@ export interface UrlReaderService {
   readTree(url: string, options?: ReadTreeOptions): Promise<ReadTreeResponse>;
   readUrl(url: string, options?: ReadUrlOptions): Promise<ReadUrlResponse>;
   search(url: string, options?: SearchOptions): Promise<SearchResponse>;
+}
+
+// @public (undocumented)
+export interface UserInfoService {
+  // (undocumented)
+  getUserInfo(credentials: BackstageCredentials): Promise<BackstageUserInfo>;
 }
 ```

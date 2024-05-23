@@ -11,14 +11,22 @@ on:
       - 'packages/e2e-test/**'
       - 'packages/create-app/**'
 
+permissions:
+  contents: read
+
 jobs:
   noop:
-    runs-on: windows-2019
+    runs-on: windows-2022
 
     strategy:
       matrix:
-        node-version: [16.x, 18.x]
+        node-version: [18.x, 20.x]
 
     name: E2E Windows ${{ matrix.node-version }}
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@a4aa98b93cab29d9b1101a6143fb8bce00e2eac4 # v2.7.1
+        with:
+          egress-policy: audit
+
       - run: echo NOOP

@@ -4,7 +4,38 @@
 
 ```ts
 import { Config } from '@backstage/config';
+import { ConsumedResponse } from '@backstage/errors';
 import { RestEndpointMethodTypes } from '@octokit/rest';
+
+// @public
+export class AwsCodeCommitIntegration implements ScmIntegration {
+  constructor(integrationConfig: AwsCodeCommitIntegrationConfig);
+  // (undocumented)
+  get config(): AwsCodeCommitIntegrationConfig;
+  // (undocumented)
+  static factory: ScmIntegrationsFactory<AwsCodeCommitIntegration>;
+  // (undocumented)
+  resolveEditUrl(url: string): string;
+  // (undocumented)
+  resolveUrl(options: {
+    url: string;
+    base: string;
+    lineNumber?: number | undefined;
+  }): string;
+  // (undocumented)
+  get title(): string;
+  // (undocumented)
+  get type(): string;
+}
+
+// @public
+export type AwsCodeCommitIntegrationConfig = {
+  host: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  roleArn?: string;
+  externalId?: string;
+};
 
 // @public
 export class AwsS3Integration implements ScmIntegration {
@@ -420,7 +451,25 @@ export function getGerritRequestOptions(config: GerritIntegrationConfig): {
 };
 
 // @public
+export function getGiteaArchiveUrl(
+  config: GiteaIntegrationConfig,
+  url: string,
+): string;
+
+// @public
+export function getGiteaEditContentsUrl(
+  config: GiteaIntegrationConfig,
+  url: string,
+): string;
+
+// @public
 export function getGiteaFileContentsUrl(
+  config: GiteaIntegrationConfig,
+  url: string,
+): string;
+
+// @public
+export function getGiteaLatestCommitUrl(
   config: GiteaIntegrationConfig,
   url: string,
 ): string;
@@ -462,6 +511,17 @@ export function getGitLabIntegrationRelativePath(
 // @public
 export function getGitLabRequestOptions(config: GitLabIntegrationConfig): {
   headers: Record<string, string>;
+};
+
+// @public
+export function getHarnessFileContentsUrl(
+  config: HarnessIntegrationConfig,
+  url: string,
+): string;
+
+// @public
+export function getHarnessRequestOptions(config: HarnessIntegrationConfig): {
+  headers?: Record<string, string>;
 };
 
 // @public
@@ -549,6 +609,8 @@ export class GithubIntegration implements ScmIntegration {
   // (undocumented)
   static factory: ScmIntegrationsFactory<GithubIntegration>;
   // (undocumented)
+  parseRateLimitInfo(response: ConsumedResponse): RateLimitInfo;
+  // (undocumented)
   resolveEditUrl(url: string): string;
   // (undocumented)
   resolveUrl(options: {
@@ -624,7 +686,37 @@ export type GoogleGcsIntegrationConfig = {
 };
 
 // @public
+export class HarnessIntegration implements ScmIntegration {
+  constructor(config: HarnessIntegrationConfig);
+  // (undocumented)
+  readonly config: HarnessIntegrationConfig;
+  // (undocumented)
+  static factory: ScmIntegrationsFactory<HarnessIntegration>;
+  // (undocumented)
+  resolveEditUrl(url: string): string;
+  // (undocumented)
+  resolveUrl(options: {
+    url: string;
+    base: string;
+    lineNumber?: number | undefined;
+  }): string;
+  // (undocumented)
+  get title(): string;
+  // (undocumented)
+  get type(): string;
+}
+
+// @public
+export type HarnessIntegrationConfig = {
+  host: string;
+  token?: string;
+  apiKey?: string;
+};
+
+// @public
 export interface IntegrationsByType {
+  // (undocumented)
+  awsCodeCommit: ScmIntegrationsGroup<AwsCodeCommitIntegration>;
   // (undocumented)
   awsS3: ScmIntegrationsGroup<AwsS3Integration>;
   // (undocumented)
@@ -643,6 +735,8 @@ export interface IntegrationsByType {
   github: ScmIntegrationsGroup<GithubIntegration>;
   // (undocumented)
   gitlab: ScmIntegrationsGroup<GitLabIntegration>;
+  // (undocumented)
+  harness: ScmIntegrationsGroup<HarnessIntegration>;
 }
 
 // @public
@@ -659,10 +753,38 @@ export function parseGerritGitilesUrl(
 export function parseGerritJsonResponse(response: Response): Promise<unknown>;
 
 // @public
+export function parseGiteaUrl(
+  config: GiteaIntegrationConfig,
+  url: string,
+): {
+  url: string;
+  owner: string;
+  name: string;
+  ref: string;
+  path: string;
+};
+
+// @public
 export type PersonalAccessTokenCredential = AzureCredentialBase & {
   kind: 'PersonalAccessToken';
   personalAccessToken: string;
 };
+
+// @public
+export interface RateLimitInfo {
+  // (undocumented)
+  isRateLimited: boolean;
+}
+
+// @public
+export function readAwsCodeCommitIntegrationConfig(
+  config: Config,
+): AwsCodeCommitIntegrationConfig;
+
+// @public
+export function readAwsCodeCommitIntegrationConfigs(
+  configs: Config[],
+): AwsCodeCommitIntegrationConfig[];
 
 // @public
 export function readAwsS3IntegrationConfig(
@@ -758,6 +880,9 @@ export function readGoogleGcsIntegrationConfig(
   config: Config,
 ): GoogleGcsIntegrationConfig;
 
+// @public
+export function readHarnessConfig(config: Config): HarnessIntegrationConfig;
+
 // @public @deprecated (undocumented)
 export const replaceGitHubUrlType: typeof replaceGithubUrlType;
 
@@ -789,6 +914,8 @@ export interface ScmIntegration {
 export interface ScmIntegrationRegistry
   extends ScmIntegrationsGroup<ScmIntegration> {
   // (undocumented)
+  awsCodeCommit: ScmIntegrationsGroup<AwsCodeCommitIntegration>;
+  // (undocumented)
   awsS3: ScmIntegrationsGroup<AwsS3Integration>;
   // (undocumented)
   azure: ScmIntegrationsGroup<AzureIntegration>;
@@ -806,6 +933,8 @@ export interface ScmIntegrationRegistry
   github: ScmIntegrationsGroup<GithubIntegration>;
   // (undocumented)
   gitlab: ScmIntegrationsGroup<GitLabIntegration>;
+  // (undocumented)
+  harness: ScmIntegrationsGroup<HarnessIntegration>;
   resolveEditUrl(url: string): string;
   resolveUrl(options: {
     url: string;
@@ -817,6 +946,8 @@ export interface ScmIntegrationRegistry
 // @public
 export class ScmIntegrations implements ScmIntegrationRegistry {
   constructor(integrationsByType: IntegrationsByType);
+  // (undocumented)
+  get awsCodeCommit(): ScmIntegrationsGroup<AwsCodeCommitIntegration>;
   // (undocumented)
   get awsS3(): ScmIntegrationsGroup<AwsS3Integration>;
   // (undocumented)
@@ -841,6 +972,8 @@ export class ScmIntegrations implements ScmIntegrationRegistry {
   get github(): ScmIntegrationsGroup<GithubIntegration>;
   // (undocumented)
   get gitlab(): ScmIntegrationsGroup<GitLabIntegration>;
+  // (undocumented)
+  get harness(): ScmIntegrationsGroup<HarnessIntegration>;
   // (undocumented)
   list(): ScmIntegration[];
   // (undocumented)

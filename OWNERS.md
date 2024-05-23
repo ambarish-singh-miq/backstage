@@ -1,5 +1,5 @@
 - See [CONTRIBUTING.md](CONTRIBUTING.md) for general contribution guidelines.
-- See [GOVERNANCE.md](GOVERNANCE.md) for governance guidelines and responsibilities.
+- See [GOVERNANCE.md](https://github.com/backstage/community/blob/main/GOVERNANCE.md) for governance guidelines and responsibilities.
 
 ## Core Maintainers
 
@@ -22,12 +22,15 @@ Team: @backstage/catalog-maintainers
 
 Scope: The catalog plugin and catalog model
 
-| Name           | Organization | Team      | GitHub                                   | Discord          |
-| -------------- | ------------ | --------- | ---------------------------------------- | ---------------- |
-| Rickard Dybeck | Spotify      | Chipmunks | [alde](http://github.com/alde)           | rdybeck#8083     |
-| Mike Blockley  | Spotify      | Chipmunks | [mikeyhc](http://github.com/mikeyhc)     | mikey-spot#5363  |
-| Elon Jefferson | Spotify      | Chipmunks | [Edje-C](http://github.com/Edje-C)       | elon-spotty#6086 |
-| Nurit Izrailov | Spotify      | Chipmunks | [nuritizra](http://github.com/nuritizra) | -                |
+| Name                 | Organization | Team          | GitHub                                          | Discord         |
+| -------------------- | ------------ | ------------- | ----------------------------------------------- | --------------- |
+| Ben Lambert          | Spotify      | Cubic Belugas | [benjdlambert](https://github.com/benjdlambert) | `blam#2159`     |
+| Camila Loiola        | Spotify      | Cubic Belugas | [camilaibs](http://github.com/camilaibs)        | `camilal#0226`  |
+| Fredrik Adelöw       | Spotify      | Cubic Belugas | [freben](https://github.com/freben)             | `freben#3926`   |
+| Johan Haals          | Spotify      | Cubic Belugas | [jhaals](https://github.com/jhaals)             | `Johan#0679`    |
+| Mihai Tabara         | Spotify      | Cubic Belugas | [MihaiTabara](http://github.com/MihaiTabara)    | `mihait#3107`   |
+| Patrik Oldsberg      | Spotify      | Cubic Belugas | [Rugvip](https://github.com/Rugvip)             | `Rugvip#0019`   |
+| Vincenzo Scamporlino | Spotify      | Cubic Belugas | [vinzscam](http://github.com/vinzscam)          | `vinzscam#6944` |
 
 ### Discoverability
 
@@ -35,14 +38,13 @@ Team: @backstage/discoverability-maintainers
 
 Scope: Discoverability within Backstage, including the home page, information architecture, and search
 
-| Name                     | Organization | Team | GitHub                                   | Discord            |
-| ------------------------ | ------------ | ---- | ---------------------------------------- | ------------------ |
-| Avantika Iyer            | Spotify      | BUX  | [tikabom](http://github.com/tikabom)     | -                  |
-| Camila Belo              | Spotify      | BUX  | [camilaibs](http://github.com/camilaibs) | Camila Loiola#0226 |
-| Emma Indal               | Spotify      | BUX  | [emmaindal](http://github.com/emmaindal) | emmaindal#7503     |
-| Raghunandan Balachandran | Spotify      | BUX  | [soapraj](http://github.com/soapraj)     | raghunandanb#1114  |
-| Renan Mendes Carvalho    | Spotify      | BUX  | [aitherios](http://github.com/aitherios) | aitherios#0593     |
-| Bailey Brooks            | Spotify      | BUX  | [bailey](http://github.com/bailey)       | \_bailey4          |
+| Name                     | Organization | Team           | GitHub                                   | Discord           |
+| ------------------------ | ------------ | -------------- | ---------------------------------------- | ----------------- |
+| Avantika Iyer            | Spotify      | Infinite Buck$ | [tikabom](http://github.com/tikabom)     | -                 |
+| Emma Indal               | Spotify      | Infinite Buck$ | [emmaindal](http://github.com/emmaindal) | emmaindal#7503    |
+| Djamaile Rahamat         | Spotify      | Infinite Buck$ | [djamaile](http://github.com/djamaile)   | dyoqi             |
+| Raghunandan Balachandran | Spotify      | Infinite Buck$ | [soapraj](http://github.com/soapraj)     | raghunandanb#1114 |
+| Bailey Brooks            | Spotify      | Infinite Buck$ | [bailey](http://github.com/bailey)       | \_bailey4         |
 
 ### Helm Charts
 
@@ -62,10 +64,9 @@ Team: @backstage/kubernetes-maintainers
 
 Scope: The Kubernetes plugin and the base it provides for other plugins to build upon.
 
-| Name           | Organization | Team | GitHub                                         | Discord           |
-| -------------- | ------------ | ---- | ---------------------------------------------- | ----------------- |
-| Matthew Clarke | Spotify      |      | [mclarke47](http://github.com/mclarke47)       | mclarke#0725      |
-| Jamie Klassen  | VMware       |      | [jamieklassen](http://github.com/jamieklassen) | jamieklassen#3047 |
+| Name           | Organization | Team | GitHub                                   | Discord      |
+| -------------- | ------------ | ---- | ---------------------------------------- | ------------ |
+| Matthew Clarke | Spotify      |      | [mclarke47](http://github.com/mclarke47) | mclarke#0725 |
 
 ### Permission Framework
 
@@ -73,16 +74,15 @@ Team: @backstage/permission-maintainers
 
 Scope: The Permission Framework and plugins integrating with the permission framework
 
-| Name                 | Organization | Team            | GitHub                                         | Discord          |
-| -------------------- | ------------ | --------------- | ---------------------------------------------- | ---------------- |
-| Ainhoa Larumbe       | Spotify      | Imaginary Goats | [ainhoaL](http://github.com/ainhoaL)           | ainhoa#8085      |
-| Claire Casey         | Spotify      | Imaginary Goats | [clairelcasey](http://github.com/clairelcasey) | clairecasey#2710 |
-| Eric Peterson        | Spotify      | Imaginary Goats | [iamEAP](http://github.com/iamEAP)             | iamEAP#3058      |
-| Harry Hogg           | Spotify      | Imaginary Goats | [HHogg](http://github.com/HHogg)               | simplex#3451     |
-| Joon Park            | Spotify      | Imaginary Goats | [Joonpark13](http://github.com/Joonpark13)     | Sixpool#5060     |
-| Mike Lewis           | Spotify      | Imaginary Goats | [mtlewis](http://github.com/mtlewis)           | mtlewis#3658     |
-| Tim Hansen           | Spotify      | Imaginary Goats | [timbonicus](http://github.com/timbonicus)     | timbonicus#6871  |
-| Vincenzo Scamporlino | Spotify      | Imaginary Goats | [vinzscam](http://github.com/vinzscam)         | vinzscam#6944    |
+| Name                 | Organization | Team          | GitHub                                          | Discord         |
+| -------------------- | ------------ | ------------- | ----------------------------------------------- | --------------- |
+| Ben Lambert          | Spotify      | Cubic Belugas | [benjdlambert](https://github.com/benjdlambert) | `blam#2159`     |
+| Camila Loiola        | Spotify      | Cubic Belugas | [camilaibs](http://github.com/camilaibs)        | `camilal#0226`  |
+| Fredrik Adelöw       | Spotify      | Cubic Belugas | [freben](https://github.com/freben)             | `freben#3926`   |
+| Johan Haals          | Spotify      | Cubic Belugas | [jhaals](https://github.com/jhaals)             | `Johan#0679`    |
+| Mihai Tabara         | Spotify      | Cubic Belugas | [MihaiTabara](http://github.com/MihaiTabara)    | `mihait#3107`   |
+| Patrik Oldsberg      | Spotify      | Cubic Belugas | [Rugvip](https://github.com/Rugvip)             | `Rugvip#0019`   |
+| Vincenzo Scamporlino | Spotify      | Cubic Belugas | [vinzscam](http://github.com/vinzscam)          | `vinzscam#6944` |
 
 ### TechDocs
 
@@ -106,45 +106,90 @@ Scope: The TechDocs plugin and related tooling
 
 These incubating project areas have shared ownership with @backstage/maintainers.
 
+### Community Plugins
+
+Team: @backstage/community-plugins-maintainers
+
+Scope: Tooling and Community Repo Maintainers for the Backstage [Community Plugins repository](https://github.com/backstage/community-plugins)
+
+| Name                 | Organization | GitHub                                      | Discord      |
+| -------------------- | ------------ | ------------------------------------------- | ------------ |
+| Bethany Griggs       | Red Hat      | [BethGriggs](https://github.com/BethGriggs) | `bethgriggs` |
+| Tomas Kral           | Red Hat      | [kadel](https://github.com/kadel)           | `tomkral`    |
+| André Wanlin         | Spotify      | [awanlin](https://github.com/awanlin)       | `ahhhndre`   |
+| Philipp Hugenroth    | Spotify      | [tudi2d](https://github.com/tudi2d)         | `tudi2d`     |
+| Vincenzo Scamporlino | Spotify      | [vinzscam](https://github.com/vinzscam)     | `vinzscam`   |
+
+### Events
+
+Team: @backstage/events-maintainers
+
+Scope: The Events plugin and library, along with events modules in the main repository
+
+| Name               | Organization              | GitHub                                        | Discord       |
+| ------------------ | ------------------------- | --------------------------------------------- | ------------- |
+| Patrick Jungermann | Bonial International GmbH | [pjungermann](https://github.com/pjungermann) | `pjungermann` |
+
+### Notifications
+
+Team: @backstage/notifications-maintainers
+
+Scope: The Notifications and Signals plugins and libraries
+
+| Name        | Organization | GitHub                                      | Discord   |
+| ----------- | ------------ | ------------------------------------------- | --------- |
+| Marek Libra | RedHat       | [mareklibra](https://github.com/mareklibra) | `marekli` |
+
 ### OpenAPI Tooling
 
 Team: @backstage/openapi-tooling-maintainers
 
 Scope: Tooling for frontend and backend schema-first OpenAPI development.
 
-| Name           | Organization | GitHub                                  | Discord       |
-| -------------- | ------------ | --------------------------------------- | ------------- |
-| Aramis Sennyey |              | [sennyeya](https://github.com/sennyeya) | `Aramis#7984` |
+| Name           | Organization | GitHub                                                | Discord       |
+| -------------- | ------------ | ----------------------------------------------------- | ------------- |
+| Aramis Sennyey |              | [aramissennyeydd](https://github.com/aramissennyeydd) | `Aramis#7984` |
+
+### Scaffolder
+
+Team: @backstage/scaffolder-maintainers
+
+Scope: The Scaffolder frontend and backend plugins, and related tooling.
+
+| Name                | Organization | GitHub                                | Discord          |
+| ------------------- | ------------ | ------------------------------------- | ---------------- |
+| Bogdan Nechyporenko | Bol.com      | [acierto](https://github.com/acierto) | `bogdan_haarlem` |
 
 ## Sponsors
 
-| Name              | Organization | GitHub                                      | Email             |
-| ----------------- | ------------ | ------------------------------------------- | ----------------- |
-| Niklas Gustavsson | Spotify      | [protocol7](https://github.com/protocol7)   | ngn@spotify.com   |
-| Dave Zolotusky    | Spotify      | [dzolotusky](https://github.com/dzolotusky) | dzolo@spotify.com |
-| Lee Mills         | Spotify      | [leemills83](https://github.com/leemills83) | leem@spotify.com  |
+| Name              | Organization | GitHub                                      | Email              |
+| ----------------- | ------------ | ------------------------------------------- | ------------------ |
+| Niklas Gustavsson | Spotify      | [protocol7](https://github.com/protocol7)   | ngn@spotify.com    |
+| Dave Zolotusky    | Spotify      | [dzolotusky](https://github.com/dzolotusky) | dzolo@spotify.com  |
+| Helen Greul       | Spotify      | [helengreul](https://github.com/helengreul) | heleng@spotify.com |
 
 ## Organization Members
 
 | Name                           | Organization              | GitHub                                                | Discord                        |
 | ------------------------------ | ------------------------- | ----------------------------------------------------- | ------------------------------ |
-| Adam Harvey                    | Cisco                     | [adamdmharvey](https://github.com/adamdmharvey)       | `adamharvey_`                  |
+| Adam Harvey                    | Okta                      | [adamdmharvey](https://github.com/adamdmharvey)       | `adamharvey_`                  |
 | Alex Crome                     |                           | [afscrome](https://github.com/afscrome)               | `afscrome`                     |
-| Andre Wanlin                   | Keyloop                   | [awanlin](https://github.com/awanlin)                 | `ahhhndre`                     |
+| Andre Wanlin                   | Spotify                   | [awanlin](https://github.com/awanlin)                 | `ahhhndre`                     |
 | Andrew Thauer                  | Wealthsimple              | [andrewthauer](https://github.com/andrewthauer)       | `andrewthauer#3060`            |
-| Aramis Sennyey                 |                           | [sennyeya](https://github.com/sennyeya)               | `Aramis#7984`                  |
+| Aramis Sennyey                 |                           | [aramissennyeydd](https://github.com/aramissennyeydd) | `Aramis#7984`                  |
 | Brian Fletcher                 | Roadie.io                 | [punkle](https://github.com/punkle)                   | `Brian Fletcher#7051`          |
 | Carlos Esteban Lopez Jaramillo | VMWare                    | [luchillo17](https://github.com/luchillo17)           | `luchillo17#8777`              |
 | David Tuite                    | Roadie.io                 | [dtuite](https://github.com/dtuite)                   | `David Tuite (roadie.io)#1010` |
+| Deepankumar Loganathan         |                           | [deepan10](https://github.com/deepan10)               | `deepan10`                     |
 | Himanshu Mishra                | Harness.io                | [OrkoHunter](https://github.com/OrkoHunter)           | `OrkoHunter#1520`              |
 | Irma Solakovic                 | Roadie.io                 | [Irma12](https://github.com/Irma12)                   | `Irma#7629`                    |
-| Jamie Klassen                  | VMware                    | [jamieklassen](https://github.com/jamieklassen)       | `jamieklassen#3047`            |
 | Jorge Lainfiesta               | Roadie.io                 | [jorgelainfiesta](https://github.com/jorgelainfiesta) | `jorgel#8733`                  |
 | Jussi Hallila                  | Roadie.io                 | [Xantier](https://github.com/Xantier)                 | `Xantier#0086`                 |
 | Mark Avery                     | Cvent                     | [webark](https://github.com/webark)                   | `webark#8471`                  |
 | Miklós Kiss                    | Roadie.io                 | [kissmikijr](https://github.com/kissmikijr)           | `Miklos#7416`                  |
 | Patrick Jungermann             | Bonial International GmbH | [pjungermann](https://github.com/pjungermann)         | `pjungermann#6933`             |
 | Phil Kuang                     | FactSet Research Systems  | [kuangp](https://github.com/kuangp)                   | `pkuang#3202`                  |
+| Sebastian Poxhofer             | N26                       | [secustor](https://github.com/secustor)               | `secustor`                     |
 | Taras Mankovski                | Frontside                 | [taras](https://github.com/taras)                     | `tarasm#1256`                  |
 
 ## Emeritus Core Maintainers
@@ -152,3 +197,16 @@ Scope: Tooling for frontend and backend schema-first OpenAPI development.
 | Maintainer   | Organization | GitHub                                        | Discord        |
 | ------------ | ------------ | --------------------------------------------- | -------------- |
 | Stefan Ålund | Spotify      | [stefanalund](https://github.com/stefanalund) | `stalund#9602` |
+
+## Emeritus End User Sponsors
+
+| Name      | Organization | GitHub                                      | Discord        |
+| --------- | ------------ | ------------------------------------------- | -------------- |
+| Lee Mills | Spotify      | [leemills83](https://github.com/leemills83) | `.binarypoint` |
+
+## Emeritus Project Area Maintainers
+
+| Maintainer    | Organization   | GitHub                                          | Discord             |
+| ------------- | -------------- | ----------------------------------------------- | ------------------- |
+| Paul Cowan    | frontendrescue | [dagda1](https://github.com/dagda1)             | `dagda1`            |
+| Jamie Klassen | VMware         | [jamieklassen](https://github.com/jamieklassen) | `jamieklassen#3047` |

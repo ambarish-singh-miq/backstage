@@ -25,32 +25,44 @@ import { createPermissionIntegrationRouter } from '@backstage/plugin-permission-
 import express from 'express';
 import Router from 'express-promise-router';
 import { Duration } from 'luxon';
-import { Logger } from 'winston';
 
+import {
+  AksStrategy,
+  AnonymousStrategy,
+  AwsIamStrategy,
+  AzureIdentityStrategy,
+  DispatchStrategy,
+  GoogleServiceAccountStrategy,
+  GoogleStrategy,
+  OidcStrategy,
+  ServiceAccountStrategy,
+} from '../auth';
 import { getCombinedClusterSupplier } from '../cluster-locator';
+
+import { createLegacyAuthAdapters } from '@backstage/backend-common';
+import {
+  AuthService,
+  BackstageCredentials,
+  DiscoveryService,
+  HttpAuthService,
+  LoggerService,
+} from '@backstage/backend-plugin-api';
 import {
   AuthenticationStrategy,
-  AnonymousStrategy,
-  DispatchStrategy,
-  GoogleStrategy,
-  ServiceAccountStrategy,
-  AwsIamStrategy,
-  GoogleServiceAccountStrategy,
-  AzureIdentityStrategy,
-  OidcStrategy,
-  AksStrategy,
-} from '../auth';
-
-import { addResourceRoutesToRouter } from '../routes/resourcesRoutes';
-import { MultiTenantServiceLocator } from '../service-locator/MultiTenantServiceLocator';
-import {
+  AuthMetadata,
   CustomResource,
   KubernetesClustersSupplier,
   KubernetesFetcher,
   KubernetesObjectsProvider,
-  KubernetesObjectsProviderOptions,
   KubernetesObjectTypes,
   KubernetesServiceLocator,
+} from '@backstage/plugin-kubernetes-node';
+import { addResourceRoutesToRouter } from '../routes/resourcesRoutes';
+import { CatalogRelationServiceLocator } from '../service-locator/CatalogRelationServiceLocator';
+import { MultiTenantServiceLocator } from '../service-locator/MultiTenantServiceLocator';
+import { SingleTenantServiceLocator } from '../service-locator/SingleTenantServiceLocator';
+import {
+  KubernetesObjectsProviderOptions,
   ObjectsByEntityRequest,
   ServiceLocatorMethod,
 } from '../types/types';
@@ -66,10 +78,13 @@ import { KubernetesProxy } from './KubernetesProxy';
  * @public
  */
 export interface KubernetesEnvironment {
-  logger: Logger;
+  logger: LoggerService;
   config: Config;
   catalogApi: CatalogApi;
+  discovery: DiscoveryService;
   permissions: PermissionEvaluator;
+  auth?: AuthService;
+  httpAuth?: HttpAuthService;
 }
 
 /**
@@ -127,6 +142,13 @@ export class KubernetesBuilder {
         router: Router(),
       } as unknown as KubernetesBuilderReturn;
     }
+
+    const { auth, httpAuth } = createLegacyAuthAdapters({
+      auth: this.env.auth,
+      httpAuth: this.env.httpAuth,
+      discovery: this.env.discovery,
+    });
+
     const customResources = this.buildCustomResources();
 
     const fetcher = this.getFetcher();
@@ -135,7 +157,12 @@ export class KubernetesBuilder {
 
     const authStrategyMap = this.getAuthStrategyMap();
 
-    const proxy = this.getProxy(logger, clusterSupplier);
+    const proxy = this.getProxy(
+      logger,
+      clusterSupplier,
+      this.env.discovery,
+      httpAuth,
+    );
 
     const serviceLocator = this.getServiceLocator();
 
@@ -154,6 +181,8 @@ export class KubernetesBuilder {
       this.env.catalogApi,
       proxy,
       permissions,
+      auth,
+      httpAuth,
     );
 
     return {
@@ -205,6 +234,9 @@ export class KubernetesBuilder {
   }
 
   public addAuthStrategy(key: string, strategy: AuthenticationStrategy) {
+    if (key.includes('-')) {
+      throw new Error('Strategy name can not include dashes');
+    }
     this.getAuthStrategyMap()[key] = strategy;
     return this;
   }
@@ -232,11 +264,14 @@ export class KubernetesBuilder {
     refreshInterval: Duration,
   ): KubernetesClustersSupplier {
     const config = this.env.config;
+    const { auth } = createLegacyAuthAdapters(this.env);
     this.clusterSupplier = getCombinedClusterSupplier(
       config,
       this.env.catalogApi,
       new DispatchStrategy({ authStrategyMap: this.getAuthStrategyMap() }),
+      this.env.logger,
       refreshInterval,
+      auth,
     );
 
     return this.clusterSupplier;
@@ -273,12 +308,20 @@ export class KubernetesBuilder {
         this.serviceLocator =
           this.buildMultiTenantServiceLocator(clusterSupplier);
         break;
+      case 'singleTenant':
+        this.serviceLocator =
+          this.buildSingleTenantServiceLocator(clusterSupplier);
+        break;
+      case 'catalogRelation':
+        this.serviceLocator =
+          this.buildCatalogRelationServiceLocator(clusterSupplier);
+        break;
       case 'http':
         this.serviceLocator = this.buildHttpServiceLocator(clusterSupplier);
         break;
       default:
         throw new Error(
-          `Unsupported kubernetes.clusterLocatorMethod "${method}"`,
+          `Unsupported kubernetes.serviceLocatorMethod "${method}"`,
         );
     }
 
@@ -291,6 +334,18 @@ export class KubernetesBuilder {
     return new MultiTenantServiceLocator(clusterSupplier);
   }
 
+  protected buildSingleTenantServiceLocator(
+    clusterSupplier: KubernetesClustersSupplier,
+  ): KubernetesServiceLocator {
+    return new SingleTenantServiceLocator(clusterSupplier);
+  }
+
+  protected buildCatalogRelationServiceLocator(
+    clusterSupplier: KubernetesClustersSupplier,
+  ): KubernetesServiceLocator {
+    return new CatalogRelationServiceLocator(clusterSupplier);
+  }
+
   protected buildHttpServiceLocator(
     _clusterSupplier: KubernetesClustersSupplier,
   ): KubernetesServiceLocator {
@@ -298,8 +353,10 @@ export class KubernetesBuilder {
   }
 
   protected buildProxy(
-    logger: Logger,
+    logger: LoggerService,
     clusterSupplier: KubernetesClustersSupplier,
+    discovery: DiscoveryService,
+    httpAuth: HttpAuthService,
   ): KubernetesProxy {
     const authStrategyMap = this.getAuthStrategyMap();
     const authStrategy = new DispatchStrategy({
@@ -309,6 +366,8 @@ export class KubernetesBuilder {
       logger,
       clusterSupplier,
       authStrategy,
+      discovery,
+      httpAuth,
     });
     return this.proxy;
   }
@@ -319,6 +378,8 @@ export class KubernetesBuilder {
     catalogApi: CatalogApi,
     proxy: KubernetesProxy,
     permissionApi: PermissionEvaluator,
+    authService: AuthService,
+    httpAuth: HttpAuthService,
   ): express.Router {
     const logger = this.env.logger;
     const router = Router();
@@ -334,10 +395,13 @@ export class KubernetesBuilder {
       const serviceId = req.params.serviceId;
       const requestBody: ObjectsByEntityRequest = req.body;
       try {
-        const response = await objectsProvider.getKubernetesObjectsByEntity({
-          entity: requestBody.entity,
-          auth: requestBody.auth || {},
-        });
+        const response = await objectsProvider.getKubernetesObjectsByEntity(
+          {
+            entity: requestBody.entity,
+            auth: requestBody.auth || {},
+          },
+          { credentials: await httpAuth.credentials(req) },
+        );
         res.json(response);
       } catch (e) {
         logger.error(
@@ -347,23 +411,42 @@ export class KubernetesBuilder {
       }
     });
 
-    router.get('/clusters', async (_, res) => {
-      const clusterDetails = await this.fetchClusterDetails(clusterSupplier);
+    router.get('/clusters', async (req, res) => {
+      const credentials = await httpAuth.credentials(req);
+      const clusterDetails = await this.fetchClusterDetails(clusterSupplier, {
+        credentials,
+      });
       res.json({
         items: clusterDetails.map(cd => {
           const oidcTokenProvider =
             cd.authMetadata[ANNOTATION_KUBERNETES_OIDC_TOKEN_PROVIDER];
+          const authProvider =
+            cd.authMetadata[ANNOTATION_KUBERNETES_AUTH_PROVIDER];
+          const strategy = this.getAuthStrategyMap()[authProvider];
+          let auth: AuthMetadata = {};
+          if (strategy) {
+            auth = strategy.presentAuthMetadata(cd.authMetadata);
+          }
+
           return {
             name: cd.name,
+            title: cd.title,
             dashboardUrl: cd.dashboardUrl,
-            authProvider: cd.authMetadata[ANNOTATION_KUBERNETES_AUTH_PROVIDER],
+            authProvider,
             ...(oidcTokenProvider && { oidcTokenProvider }),
+            ...(auth && Object.keys(auth).length !== 0 && { auth }),
           };
         }),
       });
     });
 
-    addResourceRoutesToRouter(router, catalogApi, objectsProvider);
+    addResourceRoutesToRouter(
+      router,
+      catalogApi,
+      objectsProvider,
+      authService,
+      httpAuth,
+    );
 
     return router;
   }
@@ -384,8 +467,9 @@ export class KubernetesBuilder {
 
   protected async fetchClusterDetails(
     clusterSupplier: KubernetesClustersSupplier,
+    options: { credentials: BackstageCredentials },
   ) {
-    const clusterDetails = await clusterSupplier.getClusters();
+    const clusterDetails = await clusterSupplier.getClusters(options);
 
     this.env.logger.info(
       `action=loadClusterDetails numOfClustersLoaded=${clusterDetails.length}`,
@@ -456,10 +540,15 @@ export class KubernetesBuilder {
   }
 
   protected getProxy(
-    logger: Logger,
+    logger: LoggerService,
     clusterSupplier: KubernetesClustersSupplier,
+    discovery: DiscoveryService,
+    httpAuth: HttpAuthService,
   ) {
-    return this.proxy ?? this.buildProxy(logger, clusterSupplier);
+    return (
+      this.proxy ??
+      this.buildProxy(logger, clusterSupplier, discovery, httpAuth)
+    );
   }
 
   protected getAuthStrategyMap() {

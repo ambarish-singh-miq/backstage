@@ -9,6 +9,7 @@ import { ApiEntity } from '@backstage/catalog-model';
 import { ApiRef } from '@backstage/core-plugin-api';
 import { BackstagePlugin } from '@backstage/core-plugin-api';
 import { CatalogTableRow } from '@backstage/plugin-catalog';
+import { EntityOwnerPickerProps } from '@backstage/plugin-catalog-react';
 import { ExternalRouteRef } from '@backstage/core-plugin-api';
 import { InfoCardVariants } from '@backstage/core-components';
 import { JSX as JSX_2 } from 'react';
@@ -54,8 +55,7 @@ const apiDocsPlugin: BackstagePlugin<
   },
   {
     registerApi: ExternalRouteRef<undefined, true>;
-  },
-  {}
+  }
 >;
 export { apiDocsPlugin };
 export { apiDocsPlugin as plugin };
@@ -106,6 +106,7 @@ export type DefaultApiExplorerPageProps = {
   initiallySelectedFilter?: UserListFilterKind;
   columns?: TableColumn<CatalogTableRow>[];
   actions?: TableProps<CatalogTableRow>['actions'];
+  ownerPickerMode?: EntityOwnerPickerProps['mode'];
 };
 
 // @public (undocumented)
@@ -166,6 +167,8 @@ export const OpenApiDefinitionWidget: (
 // @public (undocumented)
 export type OpenApiDefinitionWidgetProps = {
   definition: string;
+  requestInterceptor?: (req: any) => any | Promise<any>;
+  supportedSubmitMethods?: string[];
 };
 
 // @public (undocumented)

@@ -16,10 +16,11 @@
 
 import { ConfigReader } from '@backstage/config';
 import { JsonObject } from '@backstage/types';
-import { getVoidLogger } from '../logging';
 import { DefaultReadTreeResponseFactory } from './tree';
 import { GoogleGcsUrlReader } from './GoogleGcsUrlReader';
 import { UrlReaderPredicateTuple } from './types';
+import packageinfo from '../../package.json';
+import { mockServices } from '@backstage/backend-test-utils';
 
 const bucketGetFilesMock = jest.fn();
 jest.mock('@google-cloud/storage', () => {
@@ -43,7 +44,7 @@ describe('GcsUrlReader', () => {
   const createReader = (config: JsonObject): UrlReaderPredicateTuple[] => {
     return GoogleGcsUrlReader.factory({
       config: new ConfigReader(config),
-      logger: getVoidLogger(),
+      logger: mockServices.logger.mock(),
       treeResponseFactory: DefaultReadTreeResponseFactory.create({
         config: new ConfigReader({}),
       }),
@@ -76,6 +77,20 @@ describe('GcsUrlReader', () => {
       },
     });
     expect(entries).toHaveLength(1);
+  });
+  it('check if userAgent has been called with this key value', async () => {
+    const getStorage: any = {
+      userAgent: `backstage/backend-common.GoogleGcsUrlReader/${packageinfo.version}`,
+    };
+    jest.mock('@google-cloud/storage', () => {
+      return {
+        Storage: jest.fn(() => getStorage),
+      };
+    });
+    const getUserAgent = getStorage.userAgent.toString();
+    expect(getUserAgent).toBe(
+      `backstage/backend-common.GoogleGcsUrlReader/${packageinfo.version}`,
+    );
   });
 
   describe('predicates', () => {

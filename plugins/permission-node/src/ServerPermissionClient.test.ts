@@ -22,10 +22,13 @@ import {
   DefinitivePolicyDecision,
   ConditionalPolicyDecision,
 } from '@backstage/plugin-permission-common';
-import { setupRequestMockHandlers } from '@backstage/backend-test-utils';
+import {
+  mockCredentials,
+  mockServices,
+  setupRequestMockHandlers,
+} from '@backstage/backend-test-utils';
 import { ConfigReader } from '@backstage/config';
 import {
-  getVoidLogger,
   PluginEndpointDiscovery,
   ServerTokenManager,
 } from '@backstage/backend-common';
@@ -45,7 +48,9 @@ const discovery: PluginEndpointDiscovery = {
 };
 const testBasicPermission = createPermission({
   name: 'test.permission',
-  attributes: {},
+  attributes: {
+    action: 'create',
+  },
 });
 
 const testResourcePermission = createPermission({
@@ -58,7 +63,7 @@ const config = new ConfigReader({
   permission: { enabled: true },
   backend: { auth: { keys: [{ secret: 'a-secret-key' }] } },
 });
-const logger = getVoidLogger();
+const logger = mockServices.logger.mock();
 
 describe('ServerPermissionClient', () => {
   setupRequestMockHandlers(server);
@@ -200,5 +205,403 @@ describe('ServerPermissionClient', () => {
 
       expect(mockAuthorizeHandler).toHaveBeenCalled();
     });
+  });
+
+  describe('with credentials', () => {
+    describe('authorize', () => {
+      let mockAuthorizeHandler: jest.Mock;
+
+      beforeEach(() => {
+        mockAuthorizeHandler = jest.fn((req, res, { json }: RestContext) => {
+          const responses = req.body.items.map(
+            (r: IdentifiedPermissionMessage<DefinitivePolicyDecision>) => ({
+              id: r.id,
+              result: AuthorizeResult.ALLOW,
+            }),
+          );
+
+          return res(json({ items: responses }));
+        });
+
+        server.use(rest.post(`${mockBaseUrl}/authorize`, mockAuthorizeHandler));
+      });
+
+      it('should bypass the permission backend if permissions are disabled', async () => {
+        const client = ServerPermissionClient.fromConfig(new ConfigReader({}), {
+          discovery,
+          tokenManager: ServerTokenManager.noop(),
+          auth: mockServices.auth(),
+        });
+
+        await client.authorize(
+          [
+            {
+              permission: testBasicPermission,
+            },
+          ],
+          { credentials: mockCredentials.none() },
+        );
+
+        expect(mockAuthorizeHandler).not.toHaveBeenCalled();
+      });
+
+      it('should bypass the permission backend if permissions are enabled and request has valid server token', async () => {
+        const tokenManager = ServerTokenManager.fromConfig(config, { logger });
+        const client = ServerPermissionClient.fromConfig(config, {
+          discovery,
+          tokenManager,
+          auth: mockServices.auth(),
+        });
+
+        await client.authorize([{ permission: testBasicPermission }], {
+          credentials: mockCredentials.service(),
+        });
+
+        expect(mockAuthorizeHandler).not.toHaveBeenCalled();
+      });
+
+      it('should call the permission backend if permissions are enabled and request does not have valid server token', async () => {
+        const tokenManager = ServerTokenManager.fromConfig(config, { logger });
+        const client = ServerPermissionClient.fromConfig(config, {
+          discovery,
+          tokenManager,
+          auth: mockServices.auth(),
+        });
+
+        await client.authorize([{ permission: testBasicPermission }], {
+          credentials: mockCredentials.user(),
+        });
+
+        expect(mockAuthorizeHandler).toHaveBeenCalled();
+        expect(
+          mockAuthorizeHandler.mock.calls[0][0].headers.get('authorization'),
+        ).toBe(
+          mockCredentials.service.header({
+            onBehalfOf: mockCredentials.user(),
+            targetPluginId: 'permission',
+          }),
+        );
+      });
+    });
+
+    describe('authorizeConditional', () => {
+      let mockAuthorizeHandler: jest.Mock;
+
+      beforeEach(() => {
+        mockAuthorizeHandler = jest.fn((req, res, { json }: RestContext) => {
+          const responses = req.body.items.map(
+            (r: IdentifiedPermissionMessage<ConditionalPolicyDecision>) => ({
+              id: r.id,
+              result: AuthorizeResult.ALLOW,
+            }),
+          );
+
+          return res(json({ items: responses }));
+        });
+
+        server.use(rest.post(`${mockBaseUrl}/authorize`, mockAuthorizeHandler));
+      });
+
+      it('should bypass the permission backend if permissions are disabled', async () => {
+        const client = ServerPermissionClient.fromConfig(new ConfigReader({}), {
+          discovery,
+          tokenManager: ServerTokenManager.noop(),
+          auth: mockServices.auth(),
+        });
+
+        await client.authorizeConditional(
+          [{ permission: testResourcePermission }],
+          {
+            credentials: mockCredentials.none(),
+          },
+        );
+
+        expect(mockAuthorizeHandler).not.toHaveBeenCalled();
+      });
+
+      it('should bypass the permission backend if permissions are enabled and request has valid server token', async () => {
+        const tokenManager = ServerTokenManager.fromConfig(config, { logger });
+        const client = ServerPermissionClient.fromConfig(config, {
+          discovery,
+          tokenManager,
+          auth: mockServices.auth(),
+        });
+
+        await client.authorizeConditional(
+          [{ permission: testResourcePermission }],
+          {
+            credentials: mockCredentials.service(),
+          },
+        );
+
+        expect(mockAuthorizeHandler).not.toHaveBeenCalled();
+      });
+
+      it('should call the permission backend if permissions are enabled and request does not have valid server token', async () => {
+        const tokenManager = ServerTokenManager.fromConfig(config, { logger });
+        const client = ServerPermissionClient.fromConfig(config, {
+          discovery,
+          tokenManager,
+          auth: mockServices.auth(),
+        });
+
+        await client.authorizeConditional(
+          [{ permission: testResourcePermission }],
+          {
+            credentials: mockCredentials.user(),
+          },
+        );
+
+        expect(mockAuthorizeHandler).toHaveBeenCalled();
+        expect(
+          mockAuthorizeHandler.mock.calls[0][0].headers.get('authorization'),
+        ).toBe(
+          mockCredentials.service.header({
+            onBehalfOf: mockCredentials.user(),
+            targetPluginId: 'permission',
+          }),
+        );
+      });
+    });
+  });
+
+  describe('with access restrictions', () => {
+    it.each([{ enabled: true }, { enabled: false }])(
+      'short circuits the response when using a service principal, applying the relevant access restrictions if present, when permissions %p',
+      async permissionConfig => {
+        const client = ServerPermissionClient.fromConfig(
+          new ConfigReader({
+            permission: permissionConfig,
+          }),
+          {
+            discovery,
+            tokenManager: mockServices.tokenManager(),
+            auth: mockServices.auth(),
+          },
+        );
+
+        // no restrictions for the given plugin
+        await expect(
+          client.authorize(
+            [
+              {
+                permission: createPermission({
+                  name: 'test.permission',
+                  attributes: {
+                    action: 'create',
+                  },
+                }),
+              },
+            ],
+            {
+              credentials: mockCredentials.service('foo', {}),
+            },
+          ),
+        ).resolves.toEqual([{ result: AuthorizeResult.ALLOW }]);
+        await expect(
+          client.authorizeConditional(
+            [
+              {
+                resourceRef: undefined as any,
+                permission: createPermission({
+                  resourceType: 'test',
+                  name: 'test.permission',
+                  attributes: {
+                    action: 'create',
+                  },
+                }),
+              },
+            ],
+            {
+              credentials: mockCredentials.service('foo', {}),
+            },
+          ),
+        ).resolves.toEqual([{ result: AuthorizeResult.ALLOW }]);
+
+        // matching permission name
+        await expect(
+          client.authorize(
+            [
+              {
+                permission: createPermission({
+                  name: 'test.permission',
+                  attributes: {
+                    action: 'create',
+                  },
+                }),
+              },
+            ],
+            {
+              credentials: mockCredentials.service('foo', {
+                permissionNames: ['test.permission', 'other'],
+              }),
+            },
+          ),
+        ).resolves.toEqual([{ result: AuthorizeResult.ALLOW }]);
+        await expect(
+          client.authorizeConditional(
+            [
+              {
+                resourceRef: undefined as any,
+                permission: createPermission({
+                  resourceType: 'test',
+                  name: 'test.permission',
+                  attributes: {
+                    action: 'create',
+                  },
+                }),
+              },
+            ],
+            {
+              credentials: mockCredentials.service('foo', {
+                permissionNames: ['test.permission', 'other'],
+              }),
+            },
+          ),
+        ).resolves.toEqual([{ result: AuthorizeResult.ALLOW }]);
+
+        // matching attributes
+        await expect(
+          client.authorize(
+            [
+              {
+                permission: createPermission({
+                  name: 'test.permission',
+                  attributes: {
+                    action: 'create',
+                  },
+                }),
+              },
+            ],
+            {
+              credentials: mockCredentials.service('foo', {
+                permissionAttributes: {
+                  action: ['create', 'other' as any],
+                },
+              }),
+            },
+          ),
+        ).resolves.toEqual([{ result: AuthorizeResult.ALLOW }]);
+        await expect(
+          client.authorizeConditional(
+            [
+              {
+                resourceRef: undefined as any,
+                permission: createPermission({
+                  resourceType: 'test',
+                  name: 'test.permission',
+                  attributes: {
+                    action: 'create',
+                  },
+                }),
+              },
+            ],
+            {
+              credentials: mockCredentials.service('foo', {
+                permissionAttributes: {
+                  action: ['create', 'other' as any],
+                },
+              }),
+            },
+          ),
+        ).resolves.toEqual([{ result: AuthorizeResult.ALLOW }]);
+
+        // matching permission name but not attributes
+        await expect(
+          client.authorize(
+            [
+              {
+                permission: createPermission({
+                  name: 'test.permission',
+                  attributes: {
+                    action: 'create',
+                  },
+                }),
+              },
+            ],
+            {
+              credentials: mockCredentials.service('foo', {
+                permissionNames: ['test.permission'],
+                permissionAttributes: {
+                  action: ['other' as any],
+                },
+              }),
+            },
+          ),
+        ).resolves.toEqual([{ result: AuthorizeResult.DENY }]);
+        await expect(
+          client.authorizeConditional(
+            [
+              {
+                resourceRef: undefined as any,
+                permission: createPermission({
+                  resourceType: 'test',
+                  name: 'test.permission',
+                  attributes: {
+                    action: 'create',
+                  },
+                }),
+              },
+            ],
+            {
+              credentials: mockCredentials.service('foo', {
+                permissionNames: ['test.permission'],
+                permissionAttributes: {
+                  action: ['other' as any],
+                },
+              }),
+            },
+          ),
+        ).resolves.toEqual([{ result: AuthorizeResult.DENY }]);
+
+        // matching attributes but not permission name
+        await expect(
+          client.authorize(
+            [
+              {
+                permission: createPermission({
+                  name: 'test.permission',
+                  attributes: {
+                    action: 'create',
+                  },
+                }),
+              },
+            ],
+            {
+              credentials: mockCredentials.service('foo', {
+                permissionNames: ['wrong-name'],
+                permissionAttributes: {
+                  action: ['create'],
+                },
+              }),
+            },
+          ),
+        ).resolves.toEqual([{ result: AuthorizeResult.DENY }]);
+        await expect(
+          client.authorizeConditional(
+            [
+              {
+                resourceRef: undefined as any,
+                permission: createPermission({
+                  resourceType: 'test',
+                  name: 'test.permission',
+                  attributes: {
+                    action: 'create',
+                  },
+                }),
+              },
+            ],
+            {
+              credentials: mockCredentials.service('foo', {
+                permissionNames: ['wrong-name'],
+                permissionAttributes: {
+                  action: ['create'],
+                },
+              }),
+            },
+          ),
+        ).resolves.toEqual([{ result: AuthorizeResult.DENY }]);
+      },
+    );
   });
 });

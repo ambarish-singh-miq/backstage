@@ -4,17 +4,29 @@
 
 ```ts
 /// <reference types="jest" />
+/// <reference types="node" />
 
+import { AuthService } from '@backstage/backend-plugin-api';
 import { Backend } from '@backstage/backend-app-api';
 import { BackendFeature } from '@backstage/backend-plugin-api';
+import { BackstageCredentials } from '@backstage/backend-plugin-api';
+import { BackstageNonePrincipal } from '@backstage/backend-plugin-api';
+import { BackstagePrincipalAccessRestrictions } from '@backstage/backend-plugin-api';
+import { BackstageServicePrincipal } from '@backstage/backend-plugin-api';
+import { BackstageUserInfo } from '@backstage/backend-plugin-api';
+import { BackstageUserPrincipal } from '@backstage/backend-plugin-api';
 import { CacheService } from '@backstage/backend-plugin-api';
 import { DatabaseService } from '@backstage/backend-plugin-api';
+import { DiscoveryService } from '@backstage/backend-plugin-api';
+import { EventsService } from '@backstage/plugin-events-node';
 import { ExtendedHttpServer } from '@backstage/backend-app-api';
 import { ExtensionPoint } from '@backstage/backend-plugin-api';
+import { HttpAuthService } from '@backstage/backend-plugin-api';
 import { HttpRouterFactoryOptions } from '@backstage/backend-app-api';
 import { HttpRouterService } from '@backstage/backend-plugin-api';
 import { IdentityService } from '@backstage/backend-plugin-api';
 import { JsonObject } from '@backstage/types';
+import Keyv from 'keyv';
 import { Knex } from 'knex';
 import { LifecycleService } from '@backstage/backend-plugin-api';
 import { LoggerService } from '@backstage/backend-plugin-api';
@@ -29,12 +41,123 @@ import { ServiceFactory } from '@backstage/backend-plugin-api';
 import { ServiceRef } from '@backstage/backend-plugin-api';
 import { TokenManagerService } from '@backstage/backend-plugin-api';
 import { UrlReaderService } from '@backstage/backend-plugin-api';
+import { UserInfoService } from '@backstage/backend-plugin-api';
+
+// @public
+export function createMockDirectory(
+  options?: MockDirectoryOptions,
+): MockDirectory;
 
 // @public (undocumented)
 export function isDockerDisabledForTests(): boolean;
 
 // @public (undocumented)
+export namespace mockCredentials {
+  export function limitedUser(
+    userEntityRef?: string,
+  ): BackstageCredentials<BackstageUserPrincipal>;
+  export namespace limitedUser {
+    export function cookie(userEntityRef?: string): string;
+    // (undocumented)
+    export function invalidCookie(): string;
+    // (undocumented)
+    export function invalidToken(): string;
+    export function token(userEntityRef?: string): string;
+  }
+  export function none(): BackstageCredentials<BackstageNonePrincipal>;
+  export namespace none {
+    export function header(): string;
+  }
+  export function service(
+    subject?: string,
+    accessRestrictions?: BackstagePrincipalAccessRestrictions,
+  ): BackstageCredentials<BackstageServicePrincipal>;
+  export namespace service {
+    export function header(options?: TokenOptions): string;
+    // (undocumented)
+    export function invalidHeader(): string;
+    // (undocumented)
+    export function invalidToken(): string;
+    export function token(options?: TokenOptions): string;
+    export type TokenOptions = {
+      onBehalfOf: BackstageCredentials;
+      targetPluginId: string;
+    };
+  }
+  export function user(
+    userEntityRef?: string,
+  ): BackstageCredentials<BackstageUserPrincipal>;
+  export namespace user {
+    export function header(userEntityRef?: string): string;
+    // (undocumented)
+    export function invalidHeader(): string;
+    // (undocumented)
+    export function invalidToken(): string;
+    export function token(userEntityRef?: string): string;
+  }
+}
+
+// @public
+export interface MockDirectory {
+  addContent(root: MockDirectoryContent): void;
+  clear(): void;
+  content(
+    options?: MockDirectoryContentOptions,
+  ): MockDirectoryContent | undefined;
+  readonly path: string;
+  remove(): void;
+  resolve(...paths: string[]): string;
+  setContent(root: MockDirectoryContent): void;
+}
+
+// @public
+export type MockDirectoryContent = {
+  [name in string]:
+    | MockDirectoryContent
+    | string
+    | Buffer
+    | MockDirectoryContentCallback;
+};
+
+// @public
+export type MockDirectoryContentCallback = (
+  ctx: MockDirectoryContentCallbackContext,
+) => void;
+
+// @public
+export interface MockDirectoryContentCallbackContext {
+  path: string;
+  symlink(target: string): void;
+}
+
+// @public
+export interface MockDirectoryContentOptions {
+  path?: string;
+  shouldReadAsText?: boolean | ((path: string, buffer: Buffer) => boolean);
+}
+
+// @public
+export interface MockDirectoryOptions {
+  content?: MockDirectoryContent;
+  mockOsTmpDir?: boolean;
+}
+
+// @public (undocumented)
 export namespace mockServices {
+  // (undocumented)
+  export function auth(options?: {
+    pluginId?: string;
+    disableDefaultAuthPolicy?: boolean;
+  }): AuthService;
+  // (undocumented)
+  export namespace auth {
+    const // (undocumented)
+      factory: () => ServiceFactory<AuthService, 'plugin'>;
+    const // (undocumented)
+      mock: (
+        partialImpl?: Partial<AuthService> | undefined,
+      ) => ServiceMock<AuthService>;
+  }
   // (undocumented)
   export namespace cache {
     const // (undocumented)
@@ -52,6 +175,44 @@ export namespace mockServices {
       mock: (
         partialImpl?: Partial<DatabaseService> | undefined,
       ) => ServiceMock<DatabaseService>;
+  }
+  // (undocumented)
+  export function discovery(): DiscoveryService;
+  // (undocumented)
+  export namespace discovery {
+    const // (undocumented)
+      factory: () => ServiceFactory<DiscoveryService, 'plugin'>;
+    const // (undocumented)
+      mock: (
+        partialImpl?: Partial<DiscoveryService> | undefined,
+      ) => ServiceMock<DiscoveryService>;
+  }
+  // (undocumented)
+  export namespace events {
+    const // (undocumented)
+      factory: () => ServiceFactory<EventsService, 'plugin'>;
+    const // (undocumented)
+      mock: (
+        partialImpl?: Partial<EventsService> | undefined,
+      ) => ServiceMock<EventsService>;
+  }
+  export function httpAuth(options?: {
+    pluginId?: string;
+    defaultCredentials?: BackstageCredentials;
+  }): HttpAuthService;
+  // (undocumented)
+  export namespace httpAuth {
+    const factory: (
+      options?:
+        | {
+            defaultCredentials?: BackstageCredentials | undefined;
+          }
+        | undefined,
+    ) => ServiceFactory<HttpAuthService, 'plugin'>;
+    const // (undocumented)
+      mock: (
+        partialImpl?: Partial<HttpAuthService> | undefined,
+      ) => ServiceMock<HttpAuthService>;
   }
   // (undocumented)
   export namespace httpRouter {
@@ -181,6 +342,17 @@ export namespace mockServices {
         partialImpl?: Partial<UrlReaderService> | undefined,
       ) => ServiceMock<UrlReaderService>;
   }
+  export function userInfo(
+    customInfo?: Partial<BackstageUserInfo>,
+  ): UserInfoService;
+  // (undocumented)
+  export namespace userInfo {
+    const factory: () => ServiceFactory<UserInfoService, 'plugin'>;
+    const // (undocumented)
+      mock: (
+        partialImpl?: Partial<UserInfoService> | undefined,
+      ) => ServiceMock<UserInfoService>;
+  }
 }
 
 // @public
@@ -210,10 +382,9 @@ export type ServiceMock<TService> = {
   factory: ServiceFactory<TService>;
 } & {
   [Key in keyof TService]: TService[Key] extends (
-    this: infer This,
     ...args: infer Args
   ) => infer Return
-    ? TService[Key] & jest.MockInstance<Return, Args, This>
+    ? TService[Key] & jest.MockInstance<Return, Args>
     : TService[Key];
 };
 
@@ -256,7 +427,31 @@ export interface TestBackendOptions<TExtensionPoints extends any[]> {
 }
 
 // @public
+export type TestCacheId = 'MEMORY' | 'REDIS_7' | 'MEMCACHED_1';
+
+// @public
+export class TestCaches {
+  static create(options?: {
+    ids?: TestCacheId[];
+    disableDocker?: boolean;
+  }): TestCaches;
+  // (undocumented)
+  eachSupportedId(): [TestCacheId][];
+  init(id: TestCacheId): Promise<{
+    store: string;
+    connection: string;
+    keyv: Keyv;
+  }>;
+  // (undocumented)
+  static setDefaults(options: { ids?: TestCacheId[] }): void;
+  // (undocumented)
+  supports(id: TestCacheId): boolean;
+}
+
+// @public
 export type TestDatabaseId =
+  | 'POSTGRES_16'
+  | 'POSTGRES_15'
   | 'POSTGRES_14'
   | 'POSTGRES_13'
   | 'POSTGRES_12'
@@ -274,6 +469,8 @@ export class TestDatabases {
   // (undocumented)
   eachSupportedId(): [TestDatabaseId][];
   init(id: TestDatabaseId): Promise<Knex>;
+  // (undocumented)
+  static setDefaults(options: { ids?: TestDatabaseId[] }): void;
   // (undocumented)
   supports(id: TestDatabaseId): boolean;
 }

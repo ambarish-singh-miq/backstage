@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-import { getVoidLogger } from '@backstage/backend-common';
-import { TestDatabases } from '@backstage/backend-test-utils';
+import { TestDatabases, mockServices } from '@backstage/backend-test-utils';
 import { Knex } from 'knex';
 import { Duration } from 'luxon';
 import waitForExpect from 'wait-for-expect';
@@ -36,12 +35,12 @@ const getTask = async (knex: Knex): Promise<DbTasksRow> => {
 };
 
 describe('PluginTaskSchedulerJanitor', () => {
-  const logger = getVoidLogger();
+  const logger = mockServices.logger.mock();
   const databases = TestDatabases.create({
     ids: [
       /* 'MYSQL_8' not supported yet */
-      'POSTGRES_13',
-      'POSTGRES_9',
+      'POSTGRES_16',
+      'POSTGRES_12',
       'SQLITE_3',
       'MYSQL_8',
     ],

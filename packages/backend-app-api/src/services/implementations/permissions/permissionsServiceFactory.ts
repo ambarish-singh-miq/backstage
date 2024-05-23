@@ -20,16 +20,21 @@ import {
 } from '@backstage/backend-plugin-api';
 import { ServerPermissionClient } from '@backstage/plugin-permission-node';
 
-/** @public */
+/**
+ * @public
+ * @deprecated Please import from `@backstage/backend-defaults/permissions` instead.
+ */
 export const permissionsServiceFactory = createServiceFactory({
   service: coreServices.permissions,
   deps: {
+    auth: coreServices.auth,
     config: coreServices.rootConfig,
     discovery: coreServices.discovery,
     tokenManager: coreServices.tokenManager,
   },
-  async factory({ config, discovery, tokenManager }) {
+  async factory({ auth, config, discovery, tokenManager }) {
     return ServerPermissionClient.fromConfig(config, {
+      auth,
       discovery,
       tokenManager,
     });

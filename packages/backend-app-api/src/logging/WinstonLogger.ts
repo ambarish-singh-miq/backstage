@@ -27,6 +27,7 @@ import {
   transports,
   transport as Transport,
 } from 'winston';
+import { MESSAGE } from 'triple-beam';
 import { escapeRegExp } from '../lib/escapeRegExp';
 
 /**
@@ -34,9 +35,9 @@ import { escapeRegExp } from '../lib/escapeRegExp';
  */
 export interface WinstonLoggerOptions {
   meta?: JsonObject;
-  level: string;
-  format: Format;
-  transports: Transport[];
+  level?: string;
+  format?: Format;
+  transports?: Transport[];
 }
 
 /**
@@ -53,12 +54,20 @@ export class WinstonLogger implements RootLoggerService {
    */
   static create(options: WinstonLoggerOptions): WinstonLogger {
     const redacter = WinstonLogger.redacter();
+    const defaultFormatter =
+      process.env.NODE_ENV === 'production'
+        ? format.json()
+        : WinstonLogger.colorFormat();
 
     let logger = createLogger({
-      level: options.level,
-      format: format.combine(redacter.format, options.format),
+      level: process.env.LOG_LEVEL || options.level || 'info',
+      format: format.combine(
+        options.format ?? defaultFormatter,
+        redacter.format,
+      ),
       transports: options.transports ?? new transports.Console(),
     });
+
     if (options.meta) {
       logger = logger.child(options.meta);
     }
@@ -78,15 +87,22 @@ export class WinstonLogger implements RootLoggerService {
     let redactionPattern: RegExp | undefined = undefined;
 
     return {
-      format: format(info => {
-        if (redactionPattern && typeof info.message === 'string') {
-          info.message = info.message.replace(redactionPattern, '[REDACTED]');
+      format: format((obj: TransformableInfo) => {
+        if (!redactionPattern || !obj) {
+          return obj;
         }
-        return info;
+
+        obj[MESSAGE] = obj[MESSAGE]?.replace?.(redactionPattern, '***');
+
+        return obj;
       })(),
       add(newRedactions) {
         let added = 0;
-        for (const redaction of newRedactions) {
+        for (const redactionToTrim of newRedactions) {
+          // Trimming the string ensures that we don't accdentally get extra
+          // newlines or other whitespace interfering with the redaction; this
+          // can happen for example when using string literals in yaml
+          const redaction = redactionToTrim.trim();
           // Exclude secrets that are empty or just one character in length. These
           // typically mean that you are running local dev or tests, or using the
           // --lax flag which sets things to just 'x'.

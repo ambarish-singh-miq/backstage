@@ -14,11 +14,12 @@
  * limitations under the License.
  */
 
-import { BackstagePalette, BackstageTheme } from '@backstage/theme';
+import { BackstagePalette } from '@backstage/theme';
 import { makeStyles, useTheme } from '@material-ui/core/styles';
 import { Circle } from 'rc-progress';
 import React, { ReactNode, useEffect, useState } from 'react';
 import Box from '@material-ui/core/Box';
+import classNames from 'classnames';
 
 /** @public */
 export type GaugeClassKey =
@@ -28,7 +29,7 @@ export type GaugeClassKey =
   | 'circle'
   | 'colorUnknown';
 
-const useStyles = makeStyles<BackstageTheme>(
+const useStyles = makeStyles(
   theme => ({
     root: {
       position: 'relative',
@@ -42,6 +43,9 @@ const useStyles = makeStyles<BackstageTheme>(
       fontSize: theme.typography.pxToRem(45),
       fontWeight: theme.typography.fontWeightBold,
       color: theme.palette.textContrast,
+    },
+    overlaySmall: {
+      fontSize: theme.typography.pxToRem(25),
     },
     description: {
       fontSize: '100%',
@@ -68,6 +72,7 @@ export type GaugeProps = {
   inverse?: boolean;
   unit?: string;
   max?: number;
+  size?: 'normal' | 'small';
   description?: ReactNode;
   getColor?: GaugePropsGetColor;
 };
@@ -121,9 +126,9 @@ export const getProgressColor: GaugePropsGetColor = ({
 
 export function Gauge(props: GaugeProps) {
   const [hoverRef, setHoverRef] = useState<HTMLDivElement | null>(null);
-  const { getColor = getProgressColor } = props;
+  const { getColor = getProgressColor, size = 'normal' } = props;
   const classes = useStyles(props);
-  const { palette } = useTheme<BackstageTheme>();
+  const { palette } = useTheme();
   const { value, fractional, inverse, unit, max, description } = {
     ...defaultGaugeProps,
     ...props,
@@ -165,7 +170,11 @@ export function Gauge(props: GaugeProps) {
       {description && isHovering ? (
         <Box className={classes.description}>{description}</Box>
       ) : (
-        <Box className={classes.overlay}>
+        <Box
+          className={classNames(classes.overlay, {
+            [classes.overlaySmall]: size === 'small',
+          })}
+        >
           {isNaN(value) ? 'N/A' : `${asActual}${unit}`}
         </Box>
       )}

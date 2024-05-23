@@ -23,6 +23,26 @@ import { createServiceRef } from '../system';
  */
 export namespace coreServices {
   /**
+   * The service reference for the plugin scoped {@link AuthService}.
+   *
+   * @public
+   */
+  export const auth = createServiceRef<import('./AuthService').AuthService>({
+    id: 'core.auth',
+  });
+
+  /**
+   * The service reference for the plugin scoped {@link UserInfoService}.
+   *
+   * @public
+   */
+  export const userInfo = createServiceRef<
+    import('./UserInfoService').UserInfoService
+  >({
+    id: 'core.userInfo',
+  });
+
+  /**
    * The service reference for the plugin scoped {@link CacheService}.
    *
    * @public
@@ -57,6 +77,15 @@ export namespace coreServices {
   export const discovery = createServiceRef<
     import('./DiscoveryService').DiscoveryService
   >({ id: 'core.discovery' });
+
+  /**
+   * The service reference for the plugin scoped {@link HttpAuthService}.
+   *
+   * @public
+   */
+  export const httpAuth = createServiceRef<
+    import('./HttpAuthService').HttpAuthService
+  >({ id: 'core.httpAuth' });
 
   /**
    * The service reference for the plugin scoped {@link HttpRouterService}.
@@ -143,6 +172,7 @@ export namespace coreServices {
    * The service reference for the plugin scoped {@link TokenManagerService}.
    *
    * @public
+   * @deprecated Please migrate to the new `coreServices.auth`, `coreServices.httpAuth`, and `coreServices.userInfo` services as needed instead
    */
   export const tokenManager = createServiceRef<
     import('./TokenManagerService').TokenManagerService
@@ -161,6 +191,7 @@ export namespace coreServices {
    * The service reference for the plugin scoped {@link IdentityService}.
    *
    * @public
+   * @deprecated Please migrate to the new `coreServices.auth`, `coreServices.httpAuth`, and `coreServices.userInfo` services as needed instead
    */
   export const identity = createServiceRef<
     import('./IdentityService').IdentityService

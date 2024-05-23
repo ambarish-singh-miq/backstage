@@ -15,17 +15,15 @@
  */
 
 import React, { cloneElement } from 'react';
-import useObservable from 'react-use/lib/useObservable';
+import useObservable from 'react-use/esm/useObservable';
 import AutoIcon from '@material-ui/icons/BrightnessAuto';
 import ToggleButton from '@material-ui/lab/ToggleButton';
 import ToggleButtonGroup from '@material-ui/lab/ToggleButtonGroup';
-import {
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  Tooltip,
-  makeStyles,
-} from '@material-ui/core';
+import ListItem from '@material-ui/core/ListItem';
+import ListItemText from '@material-ui/core/ListItemText';
+import ListItemSecondaryAction from '@material-ui/core/ListItemSecondaryAction';
+import Tooltip from '@material-ui/core/Tooltip';
+import { makeStyles } from '@material-ui/core/styles';
 import { appThemeApiRef, useApi } from '@backstage/core-plugin-api';
 import { useTranslationRef } from '@backstage/core-plugin-api/alpha';
 import { userSettingsTranslationRef } from '../../translation';
@@ -130,8 +128,8 @@ export const UserSettingsThemeToggle = () => {
     >
       <ListItemText
         className={classes.listItemText}
-        primary={t('theme')}
-        secondary={t('change_the_theme_mode')}
+        primary={t('themeToggle.title')}
+        secondary={t('themeToggle.description')}
       />
       <ListItemSecondaryAction className={classes.listItemSecondaryAction}>
         <ToggleButtonGroup
@@ -141,29 +139,33 @@ export const UserSettingsThemeToggle = () => {
           onChange={handleSetTheme}
         >
           {themeIds.map(theme => {
-            const themeIcon = themeIds.find(it => it.id === theme.id)?.icon;
             const themeId = theme.id;
+            const themeIcon = theme.icon;
             const themeTitle =
               theme.title ||
               (themeId === 'light' || themeId === 'dark'
-                ? t(`theme_${themeId}`)
+                ? t(`themeToggle.names.${themeId}`)
                 : themeId);
             return (
               <TooltipToggleButton
                 key={themeId}
-                title={t('select_theme', { theme: themeTitle })}
+                title={t('themeToggle.select', { theme: themeTitle })}
                 value={themeId}
               >
                 <>
                   {themeTitle}&nbsp;
-                  <ThemeIcon id={themeId} icon={themeIcon} activeId={themeId} />
+                  <ThemeIcon
+                    id={themeId}
+                    icon={themeIcon}
+                    activeId={activeThemeId}
+                  />
                 </>
               </TooltipToggleButton>
             );
           })}
-          <Tooltip placement="top" arrow title={t('select_theme_auto')}>
+          <Tooltip placement="top" arrow title={t('themeToggle.selectAuto')}>
             <ToggleButton value="auto" selected={activeThemeId === undefined}>
-              {t('theme_auto')}&nbsp;
+              {t('themeToggle.names.auto')}&nbsp;
               <AutoIcon
                 color={activeThemeId === undefined ? 'primary' : undefined}
               />

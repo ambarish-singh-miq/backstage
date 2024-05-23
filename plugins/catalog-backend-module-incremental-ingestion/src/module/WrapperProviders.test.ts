@@ -14,9 +14,8 @@
  * limitations under the License.
  */
 
-import { getVoidLogger } from '@backstage/backend-common';
 import { PluginTaskScheduler } from '@backstage/backend-tasks';
-import { TestDatabases } from '@backstage/backend-test-utils';
+import { TestDatabases, mockServices } from '@backstage/backend-test-utils';
 import { ConfigReader } from '@backstage/config';
 import { IncrementalEntityProvider } from '../types';
 import { WrapperProviders } from './WrapperProviders';
@@ -26,16 +25,16 @@ jest.setTimeout(60_000);
 describe('WrapperProviders', () => {
   const applyDatabaseMigrations = jest.fn();
   const databases = TestDatabases.create({
-    ids: ['POSTGRES_13', 'POSTGRES_9', 'SQLITE_3', 'MYSQL_8'],
+    ids: ['POSTGRES_16', 'POSTGRES_12', 'SQLITE_3', 'MYSQL_8'],
   });
   const config = new ConfigReader({});
-  const logger = getVoidLogger();
+  const logger = mockServices.logger.mock();
   const scheduler = {
     scheduleTask: jest.fn(),
   };
 
   beforeEach(() => {
-    jest.resetAllMocks();
+    jest.clearAllMocks();
   });
 
   it.each(databases.eachSupportedId())(
